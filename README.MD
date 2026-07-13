@@ -63,6 +63,16 @@ HTML5, vanilla CSS (custom properties), vanilla JavaScript (fetch API)
 GitHub REST API v3 (git/blobs, git/trees, git/commits, git/refs, contents)
 ```
 
+## `> access token olish`
+
+```
+1.Github accountizga kirasiz
+2.Profil=>Settings=>Developer Settings
+3.Personal access token=>Tokens(classic)=>Generate new tokens(classic)
+4.Nom va hamma joyiga ruxsat berasiz
+5.ghp_m3xxxxxxxxxxxxxxxxxxxx shuni nushalisiz
+```
+
 ## `> limitations`
 
 GitHub'ning o'zi qo'ygan huquq va rate limit'lari (soatiga ~5000 so'rov) baribir amal qiladi — bu vosita ularni chetlab o'tolmaydi, faqat mavjud API imkoniyatlarini qulay GUI orqali taqdim etadi.
