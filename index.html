@@ -200,6 +200,9 @@
         <div class="field" style="max-width:110px;">
           <button id="deleteBranchBtn" class="small danger" style="width:100%;">del branch</button>
         </div>
+        <div class="field" style="max-width:110px;">
+          <button id="refreshBtn" class="small" style="width:100%;">↻ refresh</button>
+        </div>
         <div class="field" style="max-width:120px;">
           <button id="disconnectBtn" class="ghost small" style="width:100%;">disconnect</button>
         </div>
@@ -224,6 +227,16 @@
           </div>
           <div class="field" style="max-width:140px;display:flex;align-items:flex-end;">
             <button id="newFileBtn" style="width:100%;">&gt; create</button>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:2px;">
+          <div class="field">
+            <label>new_folder_name (joriy papka ichida)</label>
+            <input type="text" id="newFolderName" placeholder="masalan: assets">
+          </div>
+          <div class="field" style="max-width:140px;display:flex;align-items:flex-end;">
+            <button id="newFolderBtn" style="width:100%;">&gt; create folder</button>
           </div>
         </div>
 
@@ -391,6 +404,42 @@ document.getElementById('disconnectBtn').addEventListener('click', () => {
   document.getElementById('token').value = '';
   document.getElementById('connectStatus').textContent = '';
   log('$ uzildi', 'sys');
+});
+
+// ---------- REFRESH (akkauntdan chiqmasdan ma'lumotlarni yangilash) ----------
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  if(!state.token){ log('✗ avval ulaning', 'err'); return; }
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  try{
+    log('$ yangilanmoqda...', 'sys');
+    const keepPath = state.currentPath;
+    const keepRepo = state.currentRepo ? `${state.currentRepo.owner}/${state.currentRepo.name}` : null;
+    const keepBranch = state.currentBranch;
+
+    await loadRepos(); // repo ro'yxatini qayta yuklaydi (token saqlanib qoladi)
+
+    if(keepRepo && state.repos.some(r => r.full_name === keepRepo)){
+      document.getElementById('repoSelect').value = keepRepo;
+      await selectRepo(keepRepo);
+      if(keepBranch){
+        const branchSel = document.getElementById('branchSelect');
+        if([...branchSel.options].some(o => o.value === keepBranch)){
+          branchSel.value = keepBranch;
+          state.currentBranch = keepBranch;
+        }
+      }
+      state.currentPath = keepPath || '';
+      await loadFileList();
+      state.commitsPage = 1;
+      await loadCommits(true);
+    }
+    log('✓ sahifa yangilandi', 'ok');
+  }catch(err){
+    log(`✗ xato: ${err.message}`, 'err');
+  }finally{
+    btn.disabled = false;
+  }
 });
 
 // ---------- REPOS ----------
@@ -799,6 +848,31 @@ document.getElementById('newFileBtn').addEventListener('click', async () => {
     });
     log(`✓ yaratildi: ${fullPath}`, 'ok');
     document.getElementById('newFileName').value = '';
+    await loadFileList();
+    await loadCommits(true);
+  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
+});
+
+document.getElementById('newFolderBtn').addEventListener('click', async () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
+  const fname = document.getElementById('newFolderName').value.trim().replace(/^\/+|\/+$/g, '');
+  if(!fname){ log('✗ papka nomi kiritilmagan', 'err'); return; }
+  const { owner, name } = state.currentRepo;
+  const folderPath = state.currentPath ? `${state.currentPath}/${fname}` : fname;
+  // GitHub bo'sh papkalarni saqlamaydi, shuning uchun ichiga .gitkeep fayli qo'yamiz
+  const fullPath = `${folderPath}/.gitkeep`;
+  try{
+    log(`$ papka yaratilmoqda: ${folderPath}`, 'sys');
+    await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(fullPath).replace(/%2F/g,'/')}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        message: `create folder: ${folderPath}`,
+        content: b64encode(''),
+        branch: state.currentBranch
+      })
+    });
+    log(`✓ papka yaratildi: ${folderPath}`, 'ok');
+    document.getElementById('newFolderName').value = '';
     await loadFileList();
     await loadCommits(true);
   }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
