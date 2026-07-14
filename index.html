@@ -44,6 +44,7 @@
     transition:border-color .15s, box-shadow .15s;
   }
   input:focus,textarea:focus,select:focus{border-color:var(--green);box-shadow:0 0 10px rgba(0,255,65,0.3);}
+  textarea.code[readonly]{color:var(--yellow);border-color:var(--yellow);opacity:.85;}
   .field{margin-bottom:14px;}
   .row{display:flex;gap:12px;}
   .row .field{flex:1;}
@@ -59,6 +60,11 @@
   button.danger:hover:not(:disabled){background:var(--red);color:#000;box-shadow:0 0 14px rgba(255,59,59,0.5);}
   button.small{padding:5px 10px;font-size:11.5px;}
   button.ghost{background:transparent;}
+  a.button-like{
+    display:inline-block;background:transparent;border:1px solid var(--green-dim);color:var(--green-dim);
+    font-family:var(--font-mono);font-size:13px;padding:9px 14px;border-radius:4px;cursor:pointer;text-decoration:none;
+  }
+  a.button-like:hover{border-color:var(--green);color:var(--green);}
 
   .tabs{display:flex;gap:6px;margin:16px 0;flex-wrap:wrap;border-bottom:1px solid var(--green-faint);padding-bottom:10px;}
   .tab{
@@ -107,9 +113,10 @@
 
   .drop{
     border:1px dashed var(--green-dim);border-radius:6px;padding:20px;text-align:center;cursor:pointer;
-    color:var(--green-dim);font-size:13px;position:relative;
+    color:var(--green-dim);font-size:13px;position:relative;transition:background .12s, border-color .12s, color .12s;
   }
   .drop:hover{border-color:var(--green);color:var(--green);}
+  .drop.dragover{border-color:var(--green);color:var(--green);background:var(--green-faint);box-shadow:0 0 14px rgba(0,255,65,0.35);}
   .drop input{position:absolute;inset:0;opacity:0;cursor:pointer;}
   .filelist{margin-top:8px;max-height:100px;overflow-y:auto;font-size:11.5px;color:var(--green-dim);}
   .filelist div::before{content:"> ";}
@@ -121,6 +128,22 @@
   ::-webkit-scrollbar{width:8px;}
   ::-webkit-scrollbar-track{background:#050805;}
   ::-webkit-scrollbar-thumb{background:var(--green-dim);border-radius:4px;}
+
+  /* ---------- TOASTS ---------- */
+  #toastContainer{
+    position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;
+    max-width:320px;
+  }
+  .toast{
+    background:#050805;border:1px solid var(--green-dim);color:var(--green);
+    font-family:var(--font-mono);font-size:12.5px;padding:10px 14px;border-radius:5px;
+    box-shadow:0 4px 18px rgba(0,0,0,0.5);opacity:0;transform:translateX(20px);
+    transition:opacity .25s ease, transform .25s ease;word-break:break-word;
+  }
+  .toast.show{opacity:1;transform:translateX(0);}
+  .toast.ok{border-color:var(--green);}
+  .toast.err{border-color:var(--red);color:var(--red);}
+  .toast.warn{border-color:var(--yellow);color:var(--yellow);}
 
   /* ---------- MOBILE RESPONSIVE ---------- */
   @media (max-width: 680px){
@@ -156,8 +179,12 @@
     button.small{padding:6px 9px;font-size:11px;}
 
     .drop{padding:16px;font-size:12.5px;}
+
+    #toastContainer{left:10px;right:10px;top:10px;max-width:none;}
   }
 </style>
+
+<div id="toastContainer"></div>
 
 <div class="app">
   <div class="titlebar">
@@ -174,13 +201,17 @@
         <label>personal_access_token</label>
         <input type="password" id="token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
       </div>
-      <button id="connectBtn">&gt; connect</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="connectBtn">&gt; connect</button>
+        <button id="toggleTokenBtn" type="button" class="small ghost">👁 ko'rsatish</button>
+      </div>
       <div class="connect-gate">
         <div class="status" id="connectStatus"></div>
       </div>
       <div class="note">
         ⚠ token faqat brauzer xotirasida (RAM) turadi, sahifa yopilsa yo'qoladi, hech qayerga yuborilmaydi (to'g'ridan-to'g'ri api.github.com ga ketadi).<br>
-        ⚠ kerakli huquqlar: token yaratganda "repo" (classic) yoki fine-grained token uchun "Contents", "Administration", "Metadata: Read & Write" scope'larini bering.
+        ⚠ kerakli huquqlar: token yaratganda "repo" (classic) yoki fine-grained token uchun "Contents", "Administration", "Metadata: Read & Write" scope'larini bering.<br>
+        ⌨ Enter tugmasi bilan ham ulanish mumkin.
       </div>
     </div>
 
@@ -208,6 +239,19 @@
         </div>
       </div>
 
+      <div class="row" id="newBranchForm" style="display:none;">
+        <div class="field">
+          <label>yangi_branch_nomi (joriy "<span id="newBranchBaseLabel"></span>" asosida)</label>
+          <input type="text" id="newBranchNameInput" placeholder="masalan: feature/x">
+        </div>
+        <div class="field" style="max-width:120px;display:flex;align-items:flex-end;">
+          <button id="confirmNewBranchBtn" class="small" style="width:100%;">&gt; yaratish</button>
+        </div>
+        <div class="field" style="max-width:110px;display:flex;align-items:flex-end;">
+          <button id="cancelNewBranchBtn" class="small ghost" style="width:100%;">bekor</button>
+        </div>
+      </div>
+
       <div class="tabs">
         <div class="tab active" data-tab="browser">files</div>
         <div class="tab" data-tab="upload">upload folder</div>
@@ -218,6 +262,9 @@
       <!-- FILE BROWSER -->
       <div class="panel active" id="panel-browser">
         <div class="breadcrumb" id="breadcrumb">~/</div>
+        <div class="field" style="margin-bottom:8px;">
+          <input type="text" id="fileSearch" placeholder="🔍 joriy papkada qidirish...">
+        </div>
         <div class="list" id="fileList"></div>
 
         <div class="row" style="margin-top:14px;">
@@ -240,6 +287,20 @@
           </div>
         </div>
 
+        <div class="row" style="margin-top:10px;align-items:flex-end;">
+          <div class="field">
+            <label>upload_file (joriy papka ichiga, kompyuterdan, hajmi cheklanmagan)</label>
+            <div class="drop" id="singleDrop" style="padding:12px;">
+              📄 <span id="singleFileName">faylni shu yerga bosing yoki tashlang</span>
+              <input type="file" id="singleFileInput" multiple>
+            </div>
+            <div class="progress-outer"><div class="progress-inner" id="singleUploadProgress"></div></div>
+          </div>
+          <div class="field" style="max-width:140px;">
+            <button id="uploadSingleFileBtn" style="width:100%;">&gt; upload</button>
+          </div>
+        </div>
+
         <div class="editor-wrap" id="editorWrap" style="display:none;">
           <div class="row" style="margin-bottom:8px;">
             <div class="field" style="flex:2;">
@@ -247,9 +308,10 @@
             </div>
           </div>
           <textarea class="code" id="editorArea" spellcheck="false"></textarea>
-          <div class="row" style="margin-top:10px;">
-            <button id="saveFileBtn">&gt; save / commit</button>
+          <div class="row" style="margin-top:10px;flex-wrap:wrap;">
+            <button id="saveFileBtn">&gt; save / commit (Ctrl+S)</button>
             <button id="deleteFileBtn" class="danger">&gt; delete file</button>
+            <a id="downloadFileBtn" class="button-like" style="display:none;">&gt; download</a>
             <button id="closeEditorBtn" class="ghost">&gt; close</button>
           </div>
         </div>
@@ -301,7 +363,10 @@
             <button id="createRepoBtn" style="width:100%;">&gt; create</button>
           </div>
         </div>
-        <div class="list" id="repoManageList" style="margin-top:10px;"></div>
+        <div class="field">
+          <input type="text" id="repoSearch" placeholder="🔍 repo qidirish...">
+        </div>
+        <div class="list" id="repoManageList" style="margin-top:0px;"></div>
 
         <div class="sub" style="margin-top:18px;">&gt; active_repo_settings (admin huquqi bilan)</div>
         <div class="row">
@@ -337,7 +402,12 @@ const state = {
   currentRepo: null,   // {owner, name, default_branch}
   currentBranch: null,
   currentPath: '',      // '' = root
+  currentEntries: [],   // fayl ro'yxati - filter uchun saqlanadi
   editingFile: null,    // {path, sha}
+  editingDirty: false,
+  editingReadonly: false,
+  editingOriginalContent: null,
+  editingRawBase64: null,
   commitsPage: 1,
 };
 
@@ -348,6 +418,61 @@ function log(msg, type='sys'){
   line.textContent = msg;
   consoleEl.appendChild(line);
   consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+// ---------- TOASTS ----------
+function toast(msg, type='ok'){
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  container.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, 4200);
+}
+
+// ---------- FRIENDLY ERRORS ----------
+function friendlyError(msg){
+  if(!msg) return "noma'lum xato";
+  const rules = [
+    [/sha["\s]*(wasn'?t| was not) supplied/i, "bu nom band — shu joyda fayl/papka allaqachon mavjud"],
+    [/bad credentials/i, "token noto'g'ri yoki muddati o'tgan"],
+    [/404|not found/i, "topilmadi (repo, fayl yoki branch mavjud emas, yoki ruxsat yo'q)"],
+    [/rate limit/i, "GitHub so'rovlar limiti tugadi, biroz kuting"],
+    [/reference already exists/i, "bu branch nomi allaqachon mavjud"],
+    [/name already exists on this account/i, "bu nomli repo allaqachon mavjud"],
+    [/422/i, "so'rov qabul qilinmadi (ma'lumotlar ziddiyati yoki noto'g'ri format)"],
+    [/403/i, "ruxsat yo'q (token huquqlarini tekshiring)"],
+    [/failed to fetch/i, "tarmoqqa ulanib bo'lmadi"],
+  ];
+  for(const [re, friendly] of rules){
+    if(re.test(msg)) return `${friendly} (${msg})`;
+  }
+  return msg;
+}
+
+// ---------- ESCAPE / ICONS ----------
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fileIcon(name){
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const map = {
+    md:'📝', markdown:'📝', txt:'📄', rtf:'📄',
+    js:'📜', mjs:'📜', ts:'📜', jsx:'📜', tsx:'📜', json:'🧩', yml:'⚙️', yaml:'⚙️',
+    html:'🌐', htm:'🌐', css:'🎨', scss:'🎨',
+    png:'🖼', jpg:'🖼', jpeg:'🖼', gif:'🖼', svg:'🖼', webp:'🖼', ico:'🖼',
+    py:'🐍', java:'☕', c:'🔧', cpp:'🔧', h:'🔧', go:'🐹', rs:'🦀',
+    rb:'💎', php:'🐘', sh:'💻', bash:'💻',
+    pdf:'📕', zip:'📦', gz:'📦', tar:'📦', rar:'📦',
+    lock:'🔒', env:'🔑', gitignore:'🙈', csv:'📊', xlsx:'📊', sql:'🗄️',
+    mp3:'🎵', mp4:'🎬', wav:'🎵', mov:'🎬',
+  };
+  return map[ext] || '📄';
 }
 
 async function gh(path, options={}){
@@ -369,6 +494,21 @@ async function gh(path, options={}){
   return body;
 }
 
+// paginated GET helper - 100 tadan ko'p bo'lgan ro'yxatlarni to'liq olib keladi
+async function ghAllPages(basePath, extraParams=''){
+  let page = 1;
+  let all = [];
+  while(true){
+    const sep = basePath.includes('?') ? '&' : '?';
+    const batch = await gh(`${basePath}${sep}per_page=100&page=${page}${extraParams}`);
+    all = all.concat(batch);
+    if(!Array.isArray(batch) || batch.length < 100) break;
+    page++;
+    if(page > 20) break; // xavfsizlik chegarasi (2000 ta yozuv)
+  }
+  return all;
+}
+
 function b64encode(str){
   return btoa(unescape(encodeURIComponent(str)));
 }
@@ -376,8 +516,36 @@ function b64decode(str){
   return decodeURIComponent(escape(atob(str)));
 }
 
+// ---------- DOUBLE-CLICK GUARD ----------
+// Har qanday tugmani async funksiya bilan o'raydi: bosilganda darhol disable qiladi
+// va "..." matnini ko'rsatadi, tugagach avvalgi holatga qaytaradi.
+function guarded(btn, fn, busyText='...'){
+  return async (...args) => {
+    if(btn.disabled) return;
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = busyText;
+    try{
+      await fn(...args);
+    }finally{
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  };
+}
+
+async function pathExists(owner, name, path){
+  try{
+    await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}?ref=${state.currentBranch}`);
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
 // ---------- CONNECT ----------
-document.getElementById('connectBtn').addEventListener('click', async () => {
+const connectBtn = document.getElementById('connectBtn');
+connectBtn.addEventListener('click', guarded(connectBtn, async () => {
   const token = document.getElementById('token').value.trim();
   const statusEl = document.getElementById('connectStatus');
   if(!token){ statusEl.textContent = '✗ token kiritilmagan'; return; }
@@ -391,10 +559,24 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     document.getElementById('authGate').style.display = 'none';
     document.getElementById('mainApp').style.display = 'block';
     log(`✓ muvaffaqiyatli ulandi: ${user.login}`, 'ok');
+    toast(`Ulandi: ${user.login}`, 'ok');
   }catch(err){
-    statusEl.textContent = '✗ xato: ' + err.message;
+    const friendly = friendlyError(err.message);
+    statusEl.textContent = '✗ xato: ' + friendly;
+    toast(friendly, 'err');
     state.token = null;
   }
+}, '...'));
+
+document.getElementById('token').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter') connectBtn.click();
+});
+
+document.getElementById('toggleTokenBtn').addEventListener('click', () => {
+  const inp = document.getElementById('token');
+  const btn = document.getElementById('toggleTokenBtn');
+  if(inp.type === 'password'){ inp.type = 'text'; btn.textContent = "🙈 yashirish"; }
+  else{ inp.type = 'password'; btn.textContent = "👁 ko'rsatish"; }
 });
 
 document.getElementById('disconnectBtn').addEventListener('click', () => {
@@ -407,10 +589,9 @@ document.getElementById('disconnectBtn').addEventListener('click', () => {
 });
 
 // ---------- REFRESH (akkauntdan chiqmasdan ma'lumotlarni yangilash) ----------
-document.getElementById('refreshBtn').addEventListener('click', async () => {
+const refreshBtn = document.getElementById('refreshBtn');
+refreshBtn.addEventListener('click', guarded(refreshBtn, async () => {
   if(!state.token){ log('✗ avval ulaning', 'err'); return; }
-  const btn = document.getElementById('refreshBtn');
-  btn.disabled = true;
   try{
     log('$ yangilanmoqda...', 'sys');
     const keepPath = state.currentPath;
@@ -435,51 +616,63 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
       await loadCommits(true);
     }
     log('✓ sahifa yangilandi', 'ok');
+    toast('Yangilandi', 'ok');
   }catch(err){
-    log(`✗ xato: ${err.message}`, 'err');
-  }finally{
-    btn.disabled = false;
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
   }
-});
+}, '...'));
 
 // ---------- REPOS ----------
 async function loadRepos(){
-  const repos = await gh('/user/repos?per_page=100&sort=updated');
+  const repos = await ghAllPages('/user/repos', '&sort=updated');
   state.repos = repos;
-  const sel = document.getElementById('repoSelect');
-  sel.innerHTML = repos.map(r => `<option value="${r.full_name}">${r.full_name}${r.private ? ' 🔒' : ''}</option>`).join('');
+  renderRepoSelect();
   if(repos.length > 0){
     await selectRepo(repos[0].full_name);
   }
   renderRepoManageList();
 }
 
+function renderRepoSelect(){
+  const sel = document.getElementById('repoSelect');
+  sel.innerHTML = state.repos.map(r =>
+    `<option value="${escapeHtml(r.full_name)}">${escapeHtml(r.full_name)}${r.private ? ' 🔒' : ''}</option>`
+  ).join('');
+}
+
 function renderRepoManageList(){
+  const filter = (document.getElementById('repoSearch').value || '').toLowerCase();
   const el = document.getElementById('repoManageList');
   el.innerHTML = '';
-  state.repos.forEach(r => {
+  const filtered = state.repos.filter(r => r.full_name.toLowerCase().includes(filter));
+  if(filtered.length === 0){
+    el.innerHTML = `<div class="list-item"><span class="meta">hech narsa topilmadi</span></div>`;
+    return;
+  }
+  filtered.forEach(r => {
     const item = document.createElement('div');
     item.className = 'list-item';
     item.innerHTML = `
-      <div><span class="name">${r.full_name}</span> <span class="badge">${r.private ? 'private' : 'public'}</span></div>
+      <div><span class="name">${escapeHtml(r.full_name)}</span> <span class="badge">${r.private ? 'private' : 'public'}</span></div>
       <div class="icon-btns">
-        <button class="small danger" data-del="${r.full_name}">delete</button>
+        <button class="small danger" data-del="${escapeHtml(r.full_name)}">delete</button>
       </div>`;
     el.appendChild(item);
   });
   el.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const fullName = e.target.getAttribute('data-del');
+    btn.addEventListener('click', guarded(btn, async (e) => {
+      const fullName = btn.getAttribute('data-del');
       if(!confirm(`RUXSAT: "${fullName}" repo butunlay o'chiriladi. Bu qaytarib bo'lmaydi. Davom etasizmi?`)) return;
       try{
         await gh(`/repos/${fullName}`, { method: 'DELETE' });
         log(`✓ repo o'chirildi: ${fullName}`, 'ok');
+        toast(`Repo o'chirildi: ${fullName}`, 'ok');
 
         // ro'yxatdan darrov olib tashlaymiz (GitHub API ba'zan bir zumga eski
         // ro'yxatni qaytarishi mumkin, shuning uchun qayta fetch qilmaymiz)
         state.repos = state.repos.filter(r => r.full_name !== fullName);
-        const sel = document.getElementById('repoSelect');
-        sel.innerHTML = state.repos.map(r => `<option value="${r.full_name}">${r.full_name}${r.private ? ' 🔒' : ''}</option>`).join('');
+        renderRepoSelect();
         renderRepoManageList();
 
         const wasCurrent = state.currentRepo && `${state.currentRepo.owner}/${state.currentRepo.name}` === fullName;
@@ -492,15 +685,24 @@ function renderRepoManageList(){
             document.getElementById('branchSelect').innerHTML = '';
             document.getElementById('fileList').innerHTML = `<div class="list-item"><span class="meta">repo yo'q</span></div>`;
             document.getElementById('commitList').innerHTML = '';
-            closeEditor();
+            closeEditor(true);
           }
         }
-      }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
-    });
+      }catch(err){
+        log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+        toast(friendlyError(err.message), 'err');
+      }
+    }, '...'));
   });
 }
 
+document.getElementById('repoSearch').addEventListener('input', renderRepoManageList);
+
 document.getElementById('repoSelect').addEventListener('change', (e) => selectRepo(e.target.value));
+
+async function loadAllBranches(owner, name){
+  return ghAllPages(`/repos/${owner}/${name}/branches`);
+}
 
 async function selectRepo(fullName){
   const [owner, name] = fullName.split('/');
@@ -508,9 +710,9 @@ async function selectRepo(fullName){
   state.currentRepo = { owner, name, default_branch: repoData.default_branch };
   document.getElementById('repoSelect').value = fullName;
 
-  const branches = await gh(`/repos/${owner}/${name}/branches?per_page=100`);
+  const branches = await loadAllBranches(owner, name);
   const branchSel = document.getElementById('branchSelect');
-  branchSel.innerHTML = branches.map(b => `<option value="${b.name}">${b.name}</option>`).join('');
+  branchSel.innerHTML = branches.map(b => `<option value="${escapeHtml(b.name)}">${escapeHtml(b.name)}</option>`).join('');
   branchSel.value = repoData.default_branch;
   state.currentBranch = repoData.default_branch;
 
@@ -532,10 +734,28 @@ document.getElementById('branchSelect').addEventListener('change', async (e) => 
 });
 
 // ---------- BRANCH MANAGEMENT ----------
-document.getElementById('newBranchBtn').addEventListener('click', async () => {
-  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
-  const newName = prompt('Yangi branch nomi (joriy branch: ' + state.currentBranch + ' asosida yaratiladi):');
-  if(!newName) return;
+const newBranchBtn = document.getElementById('newBranchBtn');
+const newBranchForm = document.getElementById('newBranchForm');
+const newBranchNameInput = document.getElementById('newBranchNameInput');
+const confirmNewBranchBtn = document.getElementById('confirmNewBranchBtn');
+
+newBranchBtn.addEventListener('click', () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); toast('repo tanlanmagan', 'err'); return; }
+  document.getElementById('newBranchBaseLabel').textContent = state.currentBranch;
+  const willShow = newBranchForm.style.display === 'none' || !newBranchForm.style.display;
+  newBranchForm.style.display = willShow ? 'flex' : 'none';
+  if(willShow){ newBranchNameInput.value = ''; newBranchNameInput.focus(); }
+});
+document.getElementById('cancelNewBranchBtn').addEventListener('click', () => {
+  newBranchForm.style.display = 'none';
+});
+newBranchNameInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter') confirmNewBranchBtn.click();
+});
+
+confirmNewBranchBtn.addEventListener('click', guarded(confirmNewBranchBtn, async () => {
+  const newName = newBranchNameInput.value.trim();
+  if(!newName){ toast('branch nomi kiritilmagan', 'err'); return; }
   const { owner, name } = state.currentRepo;
   try{
     log(`$ branch yaratilmoqda: ${newName}`, 'sys');
@@ -545,21 +765,28 @@ document.getElementById('newBranchBtn').addEventListener('click', async () => {
       body: JSON.stringify({ ref: `refs/heads/${newName}`, sha: refData.object.sha })
     });
     log(`✓ branch yaratildi: ${newName}`, 'ok');
-    const branches = await gh(`/repos/${owner}/${name}/branches?per_page=100`);
+    toast(`Branch yaratildi: ${newName}`, 'ok');
+    const branches = await loadAllBranches(owner, name);
     const branchSel = document.getElementById('branchSelect');
-    branchSel.innerHTML = branches.map(b => `<option value="${b.name}">${b.name}</option>`).join('');
+    branchSel.innerHTML = branches.map(b => `<option value="${escapeHtml(b.name)}">${escapeHtml(b.name)}</option>`).join('');
     branchSel.value = newName;
     state.currentBranch = newName;
+    newBranchForm.style.display = 'none';
     await loadFileList();
     await loadCommits(true);
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
-});
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
 
-document.getElementById('deleteBranchBtn').addEventListener('click', async () => {
+const deleteBranchBtn = document.getElementById('deleteBranchBtn');
+deleteBranchBtn.addEventListener('click', guarded(deleteBranchBtn, async () => {
   if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
   const { owner, name } = state.currentRepo;
   if(state.currentBranch === state.currentRepo.default_branch){
     log('✗ default branch o\'chirib bo\'lmaydi', 'err');
+    toast("default branch o'chirib bo'lmaydi", 'err');
     return;
   }
   if(!confirm(`"${state.currentBranch}" branch o'chirilsinmi? Bu qaytarib bo'lmaydi.`)) return;
@@ -567,18 +794,23 @@ document.getElementById('deleteBranchBtn').addEventListener('click', async () =>
     log(`$ branch o'chirilmoqda: ${state.currentBranch}`, 'sys');
     await gh(`/repos/${owner}/${name}/git/refs/heads/${state.currentBranch}`, { method:'DELETE' });
     log(`✓ branch o'chirildi`, 'ok');
-    const branches = await gh(`/repos/${owner}/${name}/branches?per_page=100`);
+    toast("Branch o'chirildi", 'ok');
+    const branches = await loadAllBranches(owner, name);
     const branchSel = document.getElementById('branchSelect');
-    branchSel.innerHTML = branches.map(b => `<option value="${b.name}">${b.name}</option>`).join('');
+    branchSel.innerHTML = branches.map(b => `<option value="${escapeHtml(b.name)}">${escapeHtml(b.name)}</option>`).join('');
     branchSel.value = state.currentRepo.default_branch;
     state.currentBranch = state.currentRepo.default_branch;
     await loadFileList();
     await loadCommits(true);
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
-});
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
 
 // ---------- REPO SETTINGS (admin) ----------
-document.getElementById('updateRepoSettingsBtn').addEventListener('click', async () => {
+const updateRepoSettingsBtn = document.getElementById('updateRepoSettingsBtn');
+updateRepoSettingsBtn.addEventListener('click', guarded(updateRepoSettingsBtn, async () => {
   if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
   const { owner, name } = state.currentRepo;
   const newName = document.getElementById('repoRenameInput').value.trim();
@@ -592,14 +824,18 @@ document.getElementById('updateRepoSettingsBtn').addEventListener('click', async
     log(`$ repo sozlamalari yangilanmoqda: ${owner}/${name}`, 'sys');
     const updated = await gh(`/repos/${owner}/${name}`, { method:'PATCH', body: JSON.stringify(payload) });
     log(`✓ yangilandi: ${updated.full_name} (${updated.private ? 'private' : 'public'})`, 'ok');
+    toast('Repo sozlamalari yangilandi', 'ok');
     document.getElementById('repoRenameInput').value = '';
     await loadRepos();
     if(updated.full_name){
       document.getElementById('repoSelect').value = updated.full_name;
       await selectRepo(updated.full_name);
     }
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
-});
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
 
 // ---------- TABS ----------
 document.querySelectorAll('.tab').forEach(tab => {
@@ -617,9 +853,9 @@ function renderBreadcrumb(){
   const parts = state.currentPath ? state.currentPath.split('/') : [];
   let html = `<span data-path="">~/</span>`;
   let acc = '';
-  parts.forEach((p, i) => {
+  parts.forEach((p) => {
     acc = acc ? acc + '/' + p : p;
-    html += ` <span data-path="${acc}">${p}/</span>`;
+    html += ` <span data-path="${escapeHtml(acc)}">${escapeHtml(p)}/</span>`;
   });
   el.innerHTML = html;
   el.querySelectorAll('span').forEach(s => {
@@ -633,79 +869,84 @@ function renderBreadcrumb(){
 async function loadFileList(){
   if(!state.currentRepo) return;
   renderBreadcrumb();
+  document.getElementById('fileSearch').value = '';
   const { owner, name } = state.currentRepo;
   const listEl = document.getElementById('fileList');
   listEl.innerHTML = `<div class="list-item"><span class="meta">yuklanmoqda...</span></div>`;
-  closeEditor();
+  closeEditor(true);
   try{
     const path = state.currentPath;
     const contents = await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}?ref=${state.currentBranch}`);
     const entries = Array.isArray(contents) ? contents : [contents];
     entries.sort((a,b) => (a.type === b.type) ? a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1));
-    listEl.innerHTML = '';
-    if(entries.length === 0){
-      listEl.innerHTML = `<div class="list-item"><span class="meta">bo'sh papka</span></div>`;
-    }
-    entries.forEach(entry => {
-      const item = document.createElement('div');
-      item.className = 'list-item';
-      const icon = entry.type === 'dir' ? '📁' : '📄';
-      item.innerHTML = `
-        <div><span class="name">${icon} ${entry.name}</span></div>
-        <div class="icon-btns">
-          <span class="meta">${entry.type === 'file' ? (entry.size + ' B') : ''}</span>
-          ${entry.type === 'file'
-            ? `<button class="small danger" data-quickdel="${entry.path}" data-sha="${entry.sha}">del</button>`
-            : `<button class="small danger" data-delfolder="${entry.path}">del folder</button>`}
-        </div>`;
-      item.addEventListener('click', (e) => {
-        if(e.target.closest('button')) return;
-        if(entry.type === 'dir'){
-          state.currentPath = entry.path;
-          loadFileList();
-        }else{
-          openFile(entry.path, entry.sha);
-        }
-      });
-      listEl.appendChild(item);
-    });
-    listEl.querySelectorAll('[data-quickdel]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const p = e.target.getAttribute('data-quickdel');
-        const sha = e.target.getAttribute('data-sha');
-        if(!confirm(`"${p}" o'chirilsinmi?`)) return;
-        await deleteFile(p, sha);
-      });
-    });
-    listEl.querySelectorAll('[data-delfolder]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const p = e.target.getAttribute('data-delfolder');
-        if(!confirm(`"${p}" papka va uning ICHIDAGI BARCHA fayllar o'chirilsinmi? Bu qaytarib bo'lmaydi.`)) return;
-        await deleteFolder(p);
-      });
-    });
+    state.currentEntries = entries;
+    renderFileList();
   }catch(err){
-    listEl.innerHTML = `<div class="list-item"><span class="meta err">✗ ${err.message}</span></div>`;
-    log(`✗ xato: ${err.message}`, 'err');
+    state.currentEntries = [];
+    listEl.innerHTML = `<div class="list-item"><span class="meta err">✗ ${escapeHtml(friendlyError(err.message))}</span></div>`;
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
   }
 }
 
+function renderFileList(){
+  const listEl = document.getElementById('fileList');
+  const filter = (document.getElementById('fileSearch').value || '').toLowerCase();
+  const entries = state.currentEntries.filter(e => e.name.toLowerCase().includes(filter));
+  listEl.innerHTML = '';
+  if(entries.length === 0){
+    listEl.innerHTML = `<div class="list-item"><span class="meta">${state.currentEntries.length === 0 ? "bo'sh papka" : 'hech narsa topilmadi'}</span></div>`;
+  }
+  entries.forEach(entry => {
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    const icon = entry.type === 'dir' ? '📁' : fileIcon(entry.name);
+    item.innerHTML = `
+      <div><span class="name">${icon} ${escapeHtml(entry.name)}</span></div>
+      <div class="icon-btns">
+        <span class="meta">${entry.type === 'file' ? (entry.size + ' B') : ''}</span>
+        ${entry.type === 'file'
+          ? `<button class="small danger" data-quickdel="${escapeHtml(entry.path)}" data-sha="${escapeHtml(entry.sha)}">del</button>`
+          : `<button class="small danger" data-delfolder="${escapeHtml(entry.path)}">del folder</button>`}
+      </div>`;
+    item.addEventListener('click', (e) => {
+      if(e.target.closest('button')) return;
+      if(entry.type === 'dir'){
+        state.currentPath = entry.path;
+        loadFileList();
+      }else{
+        openFile(entry.path, entry.sha);
+      }
+    });
+    listEl.appendChild(item);
+  });
+  listEl.querySelectorAll('[data-quickdel]').forEach(btn => {
+    btn.addEventListener('click', guarded(btn, async (e) => {
+      e.stopPropagation();
+      const p = btn.getAttribute('data-quickdel');
+      const sha = btn.getAttribute('data-sha');
+      if(!confirm(`"${p}" o'chirilsinmi?`)) return;
+      await deleteFile(p, sha);
+    }, '...'));
+  });
+  listEl.querySelectorAll('[data-delfolder]').forEach(btn => {
+    btn.addEventListener('click', guarded(btn, async (e) => {
+      e.stopPropagation();
+      const p = btn.getAttribute('data-delfolder');
+      if(!confirm(`"${p}" papka va uning ICHIDAGI BARCHA fayllar o'chirilsinmi? Bu qaytarib bo'lmaydi.`)) return;
+      await deleteFolder(p);
+    }, '...'));
+  });
+}
+
+document.getElementById('fileSearch').addEventListener('input', renderFileList);
+
 // GitHub'ning contents API'si o'chirishdan keyin bir zumga eski (keshlangan)
 // ro'yxatni qaytarishi mumkin. Shu sabab qayta fetch qilish o'rniga, o'chirilgan
-// fayl/papkani ro'yxatdan to'g'ridan-to'g'ri DOM'dan olib tashlaymiz.
+// fayl/papkani ro'yxatdan to'g'ridan-to'g'ri DOM'dan va state.currentEntries'dan olib tashlaymiz.
 function removeEntryFromFileList(path){
-  const listEl = document.getElementById('fileList');
-  Array.from(listEl.querySelectorAll('.list-item')).forEach(item => {
-    const btn = item.querySelector('[data-delfolder],[data-quickdel]');
-    if(!btn) return;
-    const val = btn.getAttribute('data-delfolder') ?? btn.getAttribute('data-quickdel');
-    if(val === path) item.remove();
-  });
-  if(listEl.children.length === 0){
-    listEl.innerHTML = `<div class="list-item"><span class="meta">bo'sh papka</span></div>`;
-  }
+  state.currentEntries = state.currentEntries.filter(e => e.path !== path);
+  renderFileList();
 }
 
 async function deleteFolder(folderPath){
@@ -726,24 +967,31 @@ async function deleteFolder(folderPath){
     const fullTree = await gh(`${base}/git/trees/${rootTreeSha}?recursive=1`);
     if(fullTree.truncated){
       log(`⚠ ogohlantirish: repo daraxti juda katta, ba'zi fayllar ko'rinmagan bo'lishi mumkin`, 'warn');
+      toast("Repo daraxti juda katta — ba'zi fayllar ko'rinmasligi mumkin", 'warn');
     }
 
-    // papka ichidagi va papkaning o'zi bo'lgan fayllarni chiqarib tashlaymiz
+    // "blob" (fayl) va "commit" (submodule) turlarini saqlab qolamiz — faqat
+    // "tree" (papka) yozuvlarini tashlab yuboramiz, chunki ular fayl yo'llaridan
+    // avtomatik qayta tiklanadi. Submodule'larni tashlab yuborish ularni butun
+    // repo'dan yo'qotib qo'yardi — shu bug tuzatildi.
     const prefix = folderPath + '/';
-    const remainingBlobs = fullTree.tree.filter(item =>
-      item.type === 'blob' && item.path !== folderPath && !item.path.startsWith(prefix)
+    const relevantTypes = ['blob', 'commit'];
+    const remainingItems = fullTree.tree.filter(item =>
+      relevantTypes.includes(item.type) && item.path !== folderPath && !item.path.startsWith(prefix)
     );
+    const totalRelevant = fullTree.tree.filter(item => relevantTypes.includes(item.type)).length;
 
-    if(remainingBlobs.length === fullTree.tree.filter(i => i.type === 'blob').length){
+    if(remainingItems.length === totalRelevant){
       log(`✗ "${folderPath}" ichida fayl topilmadi (allaqachon bo'sh yoki mavjud emas)`, 'err');
+      toast("Papka ichida fayl topilmadi", 'err');
       return;
     }
 
-    // qolgan fayllar asosida YANGI to'liq tree yaratamiz (base_tree ishlatmaymiz)
+    // qolgan fayllar (va submodule'lar) asosida YANGI to'liq tree yaratamiz (base_tree ishlatmaymiz)
     const newTree = await gh(`${base}/git/trees`, {
       method: 'POST',
       body: JSON.stringify({
-        tree: remainingBlobs.map(b => ({ path: b.path, mode: b.mode, type: 'blob', sha: b.sha }))
+        tree: remainingItems.map(b => ({ path: b.path, mode: b.mode, type: b.type, sha: b.sha }))
       })
     });
 
@@ -759,37 +1007,127 @@ async function deleteFolder(folderPath){
     await gh(`${base}/git/refs/heads/${branch}`, { method: 'PATCH', body: JSON.stringify({ sha: newCommit.sha }) });
 
     log(`✓ papka o'chirildi: ${folderPath} (${newCommit.sha.slice(0,7)})`, 'ok');
+    toast(`Papka o'chirildi: ${folderPath}`, 'ok');
     removeEntryFromFileList(folderPath);
     await loadCommits(true);
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}
+
+// Fayl mazmunini oladi. Kichik fayllar uchun Contents API'dagi `content`
+// maydonidan foydalanadi. GitHub Contents API 1MB dan katta fayllar uchun
+// `content` qaytarmaydi — shunday holatda avtomatik ravishda Git Blobs API'ga
+// o'tadi (u 100MB gacha fayllarni qo'llab-quvvatlaydi). Ikkala holatda ham
+// xom base64 saqlanadi, shu bilan yuklab olish har doim ishlaydi.
+async function fetchFileRaw(owner, name, path){
+  const data = await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}?ref=${state.currentBranch}`);
+  if(typeof data.content === 'string'){
+    return { sha: data.sha, base64: data.content.replace(/\n/g,''), downloadUrl: data.download_url || null };
+  }
+  // >1MB — Contents API content qaytarmaydi, Git Blobs API orqali olamiz
+  const blob = await gh(`/repos/${owner}/${name}/git/blobs/${data.sha}`);
+  return { sha: data.sha, base64: (blob.content || '').replace(/\n/g,''), downloadUrl: data.download_url || null };
 }
 
 async function openFile(path, sha){
   const { owner, name } = state.currentRepo;
   try{
-    const data = await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}?ref=${state.currentBranch}`);
+    const raw = await fetchFileRaw(owner, name, path);
     let content = '';
-    try{ content = b64decode(data.content.replace(/\n/g,'')); }
-    catch(e){ content = '⚠ bu fayl matn sifatida ochilmadi (binary fayl bo\'lishi mumkin)'; }
-    state.editingFile = { path, sha: data.sha };
-    document.getElementById('editingLabel').textContent = `editing: ${path}`;
-    document.getElementById('editorArea').value = content;
+    let readonly = false;
+    try{
+      content = b64decode(raw.base64);
+    }catch(e){
+      readonly = true;
+      content = "⚠ bu faylni matn sifatida ochib bo'lmadi (binary yoki matn-emas kodlash). Buzilmasligi uchun tahrirlash va saqlash o'chirilgan — 'download' tugmasidan foydalaning.";
+    }
+
+    state.editingFile = { path, sha: raw.sha };
+    state.editingReadonly = readonly;
+    state.editingRawBase64 = raw.base64;
+    state.editingOriginalContent = readonly ? null : content;
+    state.editingDirty = false;
+
+    document.getElementById('editingLabel').textContent = `editing: ${path}` + (readonly ? " (faqat o'qish)" : '');
+    const area = document.getElementById('editorArea');
+    area.value = content;
+    area.readOnly = readonly;
+    document.getElementById('saveFileBtn').disabled = readonly;
+    const dlBtn = document.getElementById('downloadFileBtn');
+    dlBtn.style.display = 'inline-block';
     document.getElementById('editorWrap').style.display = 'block';
-    log(`$ ochildi: ${path}`, 'sys');
+    log(`$ ochildi: ${path}${readonly ? ' (faqat o\'qish)' : ''}`, 'sys');
   }catch(err){
-    log(`✗ xato: ${err.message}`, 'err');
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
   }
 }
 
-function closeEditor(){
-  state.editingFile = null;
-  document.getElementById('editorWrap').style.display = 'none';
-  document.getElementById('editorArea').value = '';
-}
-document.getElementById('closeEditorBtn').addEventListener('click', closeEditor);
+document.getElementById('downloadFileBtn').addEventListener('click', (e) => {
+  e.preventDefault();
+  if(!state.editingFile || state.editingRawBase64 == null) return;
+  try{
+    const bin = atob(state.editingRawBase64);
+    const bytes = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = state.editingFile.path.split('/').pop();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }catch(err){
+    toast("Yuklab olishda xato: " + err.message, 'err');
+  }
+});
 
-document.getElementById('saveFileBtn').addEventListener('click', async () => {
+document.getElementById('editorArea').addEventListener('input', () => {
+  state.editingDirty = state.editingOriginalContent !== null &&
+    document.getElementById('editorArea').value !== state.editingOriginalContent;
+});
+
+document.getElementById('editorArea').addEventListener('keydown', (e) => {
+  if((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')){
+    e.preventDefault();
+    const saveBtn = document.getElementById('saveFileBtn');
+    if(!saveBtn.disabled) saveBtn.click();
+  }
+});
+
+window.addEventListener('beforeunload', (e) => {
+  if(state.editingDirty){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+function closeEditor(force){
+  if(!force && state.editingDirty){
+    if(!confirm("Saqlanmagan o'zgarishlar bor. Chiqilsinmi?")) return false;
+  }
+  state.editingFile = null;
+  state.editingDirty = false;
+  state.editingReadonly = false;
+  state.editingOriginalContent = null;
+  state.editingRawBase64 = null;
+  document.getElementById('editorWrap').style.display = 'none';
+  const area = document.getElementById('editorArea');
+  area.value = '';
+  area.readOnly = false;
+  document.getElementById('saveFileBtn').disabled = false;
+  return true;
+}
+document.getElementById('closeEditorBtn').addEventListener('click', () => closeEditor(false));
+
+const saveFileBtn = document.getElementById('saveFileBtn');
+saveFileBtn.addEventListener('click', guarded(saveFileBtn, async () => {
   if(!state.editingFile) return;
+  if(state.editingReadonly){ toast("Bu fayl faqat o'qish uchun — saqlab bo'lmaydi", 'err'); return; }
   const { owner, name } = state.currentRepo;
   const content = document.getElementById('editorArea').value;
   try{
@@ -804,17 +1142,24 @@ document.getElementById('saveFileBtn').addEventListener('click', async () => {
       })
     });
     state.editingFile.sha = res.content.sha;
+    state.editingOriginalContent = content;
+    state.editingDirty = false;
     log(`✓ saqlandi: ${state.editingFile.path}`, 'ok');
+    toast(`Saqlandi: ${state.editingFile.path}`, 'ok');
     await loadFileList();
     await loadCommits(true);
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
-});
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
 
-document.getElementById('deleteFileBtn').addEventListener('click', async () => {
+const deleteFileBtn = document.getElementById('deleteFileBtn');
+deleteFileBtn.addEventListener('click', guarded(deleteFileBtn, async () => {
   if(!state.editingFile) return;
   if(!confirm(`"${state.editingFile.path}" o'chirilsinmi?`)) return;
   await deleteFile(state.editingFile.path, state.editingFile.sha);
-});
+}, '...'));
 
 async function deleteFile(path, sha){
   const { owner, name } = state.currentRepo;
@@ -825,18 +1170,30 @@ async function deleteFile(path, sha){
       body: JSON.stringify({ message: `delete: ${path}`, sha, branch: state.currentBranch })
     });
     log(`✓ o'chirildi: ${path}`, 'ok');
-    closeEditor();
+    toast(`O'chirildi: ${path}`, 'ok');
+    closeEditor(true);
     removeEntryFromFileList(path);
     await loadCommits(true);
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
 }
 
-document.getElementById('newFileBtn').addEventListener('click', async () => {
-  const fname = document.getElementById('newFileName').value.trim();
-  if(!fname){ log('✗ fayl nomi kiritilmagan', 'err'); return; }
+const newFileBtn = document.getElementById('newFileBtn');
+const newFileNameInput = document.getElementById('newFileName');
+newFileBtn.addEventListener('click', guarded(newFileBtn, async () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
+  const fname = newFileNameInput.value.trim();
+  if(!fname){ log('✗ fayl nomi kiritilmagan', 'err'); toast('fayl nomi kiritilmagan', 'err'); return; }
   const { owner, name } = state.currentRepo;
   const fullPath = state.currentPath ? `${state.currentPath}/${fname}` : fname;
   try{
+    if(await pathExists(owner, name, fullPath)){
+      log(`✗ "${fullPath}" allaqachon mavjud`, 'err');
+      toast(`"${fullPath}" allaqachon mavjud`, 'err');
+      return;
+    }
     log(`$ yaratilmoqda: ${fullPath}`, 'sys');
     await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(fullPath).replace(/%2F/g,'/')}`, {
       method: 'PUT',
@@ -847,21 +1204,33 @@ document.getElementById('newFileBtn').addEventListener('click', async () => {
       })
     });
     log(`✓ yaratildi: ${fullPath}`, 'ok');
-    document.getElementById('newFileName').value = '';
+    toast(`Yaratildi: ${fullPath}`, 'ok');
+    newFileNameInput.value = '';
     await loadFileList();
     await loadCommits(true);
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
-});
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
+newFileNameInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') newFileBtn.click(); });
 
-document.getElementById('newFolderBtn').addEventListener('click', async () => {
+const newFolderBtn = document.getElementById('newFolderBtn');
+const newFolderNameInput = document.getElementById('newFolderName');
+newFolderBtn.addEventListener('click', guarded(newFolderBtn, async () => {
   if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
-  const fname = document.getElementById('newFolderName').value.trim().replace(/^\/+|\/+$/g, '');
-  if(!fname){ log('✗ papka nomi kiritilmagan', 'err'); return; }
+  const fname = newFolderNameInput.value.trim().replace(/^\/+|\/+$/g, '');
+  if(!fname){ log('✗ papka nomi kiritilmagan', 'err'); toast('papka nomi kiritilmagan', 'err'); return; }
   const { owner, name } = state.currentRepo;
   const folderPath = state.currentPath ? `${state.currentPath}/${fname}` : fname;
   // GitHub bo'sh papkalarni saqlamaydi, shuning uchun ichiga .gitkeep fayli qo'yamiz
   const fullPath = `${folderPath}/.gitkeep`;
   try{
+    if(await pathExists(owner, name, folderPath)){
+      log(`✗ "${folderPath}" allaqachon mavjud`, 'err');
+      toast(`"${folderPath}" allaqachon mavjud`, 'err');
+      return;
+    }
     log(`$ papka yaratilmoqda: ${folderPath}`, 'sys');
     await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(fullPath).replace(/%2F/g,'/')}`, {
       method: 'PUT',
@@ -872,11 +1241,96 @@ document.getElementById('newFolderBtn').addEventListener('click', async () => {
       })
     });
     log(`✓ papka yaratildi: ${folderPath}`, 'ok');
-    document.getElementById('newFolderName').value = '';
+    toast(`Papka yaratildi: ${folderPath}`, 'ok');
+    newFolderNameInput.value = '';
     await loadFileList();
     await loadCommits(true);
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
+newFolderNameInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') newFolderBtn.click(); });
+
+// ---------- SINGLE/MULTI FILE UPLOAD (joriy papka ichiga, git blobs orqali — hajmi cheklanmagan) ----------
+let selectedSingleFiles = [];
+const singleFileInput = document.getElementById('singleFileInput');
+const singleFileNameEl = document.getElementById('singleFileName');
+const singleDropEl = document.getElementById('singleDrop');
+const singleUploadProgress = document.getElementById('singleUploadProgress');
+const SINGLE_DROP_DEFAULT_TEXT = 'faylni shu yerga bosing yoki tashlang';
+
+singleFileInput.addEventListener('change', (e) => {
+  selectedSingleFiles = Array.from(e.target.files);
+  singleFileNameEl.textContent = selectedSingleFiles.length
+    ? `${selectedSingleFiles.length} ta fayl: ` + selectedSingleFiles.map(f => f.name).join(', ')
+    : SINGLE_DROP_DEFAULT_TEXT;
 });
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result.split(',')[1]) || '');
+    reader.onerror = () => reject(new Error('fayl o\'qishda xato: ' + file.name));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Git Data API (blobs/trees/commits) orqali yuklaydi — Contents API'dagi 1MB
+// cheklovi bu yerda yo'q (100MB gacha ishlaydi), va base_tree orqali mavjud
+// fayllar ustidan avtomatik yoziladi, shu sabab oldindan sha so'rash shart emas.
+async function uploadFilesViaGit(files, targetPath){
+  const { owner, name } = state.currentRepo;
+  const branch = state.currentBranch;
+  const base = `/repos/${owner}/${name}`;
+  const refData = await gh(`${base}/git/refs/heads/${branch}`);
+  const latestCommitSha = refData.object.sha;
+  const commitData = await gh(`${base}/git/commits/${latestCommitSha}`);
+  const baseTreeSha = commitData.tree.sha;
+
+  const total = files.length;
+  const treeItems = [];
+  for(let i=0;i<total;i++){
+    const file = files[i];
+    const fullPath = targetPath ? `${targetPath}/${file.name}` : file.name;
+    log(`$ (${i+1}/${total}) yuklanmoqda: ${fullPath}`, 'sys');
+    const content = await fileToBase64(file);
+    const blob = await gh(`${base}/git/blobs`, { method:'POST', body: JSON.stringify({ content, encoding:'base64' }) });
+    treeItems.push({ path: fullPath, mode:'100644', type:'blob', sha: blob.sha });
+    singleUploadProgress.style.width = Math.round(((i+1)/total)*80) + '%';
+  }
+
+  const newTree = await gh(`${base}/git/trees`, { method:'POST', body: JSON.stringify({ base_tree: baseTreeSha, tree: treeItems }) });
+  singleUploadProgress.style.width = '90%';
+  const newCommit = await gh(`${base}/git/commits`, { method:'POST', body: JSON.stringify({
+    message: `upload: ${total} fayl${targetPath ? ' ('+targetPath+')' : ''}`, tree:newTree.sha, parents:[latestCommitSha]
+  })});
+  await gh(`${base}/git/refs/heads/${branch}`, { method:'PATCH', body: JSON.stringify({ sha:newCommit.sha }) });
+  singleUploadProgress.style.width = '100%';
+  return { count: total, sha: newCommit.sha };
+}
+
+const uploadSingleFileBtn = document.getElementById('uploadSingleFileBtn');
+uploadSingleFileBtn.addEventListener('click', guarded(uploadSingleFileBtn, async () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
+  if(selectedSingleFiles.length === 0){ log('✗ fayl tanlanmagan', 'err'); toast('fayl tanlanmagan', 'err'); return; }
+  singleUploadProgress.style.width = '0%';
+  try{
+    const { count, sha } = await uploadFilesViaGit(selectedSingleFiles, state.currentPath);
+    log(`✓ muvaffaqiyatli: ${count} fayl yuklandi (${sha.slice(0,7)})`, 'ok');
+    toast(`${count} fayl yuklandi`, 'ok');
+    selectedSingleFiles = [];
+    singleFileInput.value = '';
+    singleFileNameEl.textContent = SINGLE_DROP_DEFAULT_TEXT;
+    await loadFileList();
+    await loadCommits(true);
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }finally{
+    singleUploadProgress.style.width = '0%';
+  }
+}, '...'));
 
 // ---------- COMMITS ----------
 async function loadCommits(reset=false){
@@ -893,13 +1347,16 @@ async function loadCommits(reset=false){
       const date = new Date(c.commit.author.date).toLocaleString();
       item.innerHTML = `
         <div>
-          <div class="name">${c.commit.message.split('\n')[0]}</div>
-          <div class="meta">${c.commit.author.name} • ${date}</div>
+          <div class="name">${escapeHtml(c.commit.message.split('\n')[0])}</div>
+          <div class="meta">${escapeHtml(c.commit.author.name)} • ${escapeHtml(date)}</div>
         </div>
-        <div class="meta">${c.sha.slice(0,7)}</div>`;
+        <div class="meta">${escapeHtml(c.sha.slice(0,7))}</div>`;
       listEl.appendChild(item);
     });
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
 }
 document.getElementById('loadMoreCommits').addEventListener('click', () => {
   state.commitsPage += 1;
@@ -907,10 +1364,12 @@ document.getElementById('loadMoreCommits').addEventListener('click', () => {
 });
 
 // ---------- NEW REPO ----------
-document.getElementById('createRepoBtn').addEventListener('click', async () => {
-  const nameVal = document.getElementById('newRepoName').value.trim();
+const createRepoBtn = document.getElementById('createRepoBtn');
+const newRepoNameInput = document.getElementById('newRepoName');
+createRepoBtn.addEventListener('click', guarded(createRepoBtn, async () => {
+  const nameVal = newRepoNameInput.value.trim();
   const vis = document.getElementById('newRepoVisibility').value;
-  if(!nameVal){ log('✗ repo nomi kiritilmagan', 'err'); return; }
+  if(!nameVal){ log('✗ repo nomi kiritilmagan', 'err'); toast('repo nomi kiritilmagan', 'err'); return; }
   try{
     log(`$ repo yaratilmoqda: ${nameVal}`, 'sys');
     await gh('/user/repos', {
@@ -918,10 +1377,15 @@ document.getElementById('createRepoBtn').addEventListener('click', async () => {
       body: JSON.stringify({ name: nameVal, private: vis === 'private', auto_init: true })
     });
     log(`✓ repo yaratildi: ${nameVal}`, 'ok');
-    document.getElementById('newRepoName').value = '';
+    toast(`Repo yaratildi: ${nameVal}`, 'ok');
+    newRepoNameInput.value = '';
     await loadRepos();
-  }catch(err){ log(`✗ xato: ${err.message}`, 'err'); }
-});
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
+newRepoNameInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') createRepoBtn.click(); });
 
 // ---------- UPLOAD FOLDER ----------
 let selectedFiles = [];
@@ -949,23 +1413,24 @@ folderInput.addEventListener('change', (e) => {
   }
 });
 
-function fileToBase64(file){
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result.split(',')[1]) || '');
-    reader.onerror = () => reject(new Error('fayl o\'qishda xato: ' + file.name));
-    reader.readAsDataURL(file);
-  });
-}
+// drag&drop vizual feedback
+[dropEl, singleDropEl].forEach(el => {
+  ['dragenter','dragover'].forEach(evt => el.addEventListener(evt, (e) => {
+    e.preventDefault();
+    el.classList.add('dragover');
+  }));
+  ['dragleave','drop'].forEach(evt => el.addEventListener(evt, () => {
+    el.classList.remove('dragover');
+  }));
+});
 
-uploadBtn.addEventListener('click', async () => {
+uploadBtn.addEventListener('click', guarded(uploadBtn, async () => {
   if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
-  if(selectedFiles.length === 0){ log('✗ papka tanlanmagan', 'err'); return; }
+  if(selectedFiles.length === 0){ log('✗ papka tanlanmagan', 'err'); toast('papka tanlanmagan', 'err'); return; }
   const { owner, name } = state.currentRepo;
   const branch = state.currentBranch;
   const targetPath = document.getElementById('targetpath').value.trim().replace(/^\/+|\/+$/g, '');
 
-  uploadBtn.disabled = true;
   uploadProgress.style.width = '0%';
   log(`$ upload boshlandi: ${owner}/${name}@${branch}`, 'sys');
 
@@ -1003,12 +1468,14 @@ uploadBtn.addEventListener('click', async () => {
     await gh(`${base}/git/refs/heads/${branch}`, { method:'PATCH', body: JSON.stringify({ sha:newCommit.sha }) });
     uploadProgress.style.width = '100%';
     log(`✓ muvaffaqiyatli: ${total} fayl yuklandi (${newCommit.sha.slice(0,7)})`, 'ok');
+    toast(`${total} fayl yuklandi`, 'ok');
     await loadFileList();
     await loadCommits(true);
   }catch(err){
-    log(`✗ xato: ${err.message}`, 'err');
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
   }finally{
-    uploadBtn.disabled = false;
+    uploadProgress.style.width = '0%';
   }
-});
+}, '...'));
 </script>
