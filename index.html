@@ -1,3 +1,17 @@
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <style>
   :root{
     --bg:#000000;
@@ -9,6 +23,16 @@
     --red:#ff3b3b;
     --yellow:#ffbd2e;
     --font-mono:'Fira Code','Courier New',monospace;
+  }
+  [data-theme="light"]{
+    --bg:#f2f5f2;
+    --panel:#ffffff;
+    --panel2:#eef3ee;
+    --green:#0a7a2e;
+    --green-dim:#4c8f5c;
+    --green-faint:#d7ecdb;
+    --red:#c62828;
+    --yellow:#a56a00;
   }
   *{box-sizing:border-box;}
   body{
@@ -144,6 +168,57 @@
   .toast.ok{border-color:var(--green);}
   .toast.err{border-color:var(--red);color:var(--red);}
   .toast.warn{border-color:var(--yellow);color:var(--yellow);}
+
+  /* ---------- NEW: rate limit / theme / scopes ---------- */
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+  .rate-badge{font-size:10.5px;color:var(--green-dim);border:1px solid var(--green-faint);padding:2px 7px;border-radius:3px;}
+  .theme-toggle{cursor:pointer;background:transparent;border:1px solid var(--green-dim);color:var(--green-dim);border-radius:4px;padding:3px 8px;font-size:12px;}
+  .theme-toggle:hover{color:var(--green);border-color:var(--green);}
+  .scope-warn{color:var(--yellow);font-size:11px;margin-top:6px;}
+
+  /* ---------- NEW: image preview ---------- */
+  .img-preview-wrap{width:100%;min-height:200px;max-height:480px;overflow:auto;text-align:center;background:#050805;border:1px solid var(--green-dim);border-radius:4px;padding:10px;}
+  .img-preview-wrap img{max-width:100%;max-height:460px;}
+
+  /* ---------- NEW: CodeMirror container theming ---------- */
+  .CodeMirror{height:auto;min-height:320px;border:1px solid var(--green-dim);border-radius:4px;font-family:var(--font-mono);font-size:13px;}
+  .CodeMirror.readonly-cm{border-color:var(--yellow);opacity:.9;}
+
+  /* ---------- NEW: markdown preview ---------- */
+  .md-preview{background:#050805;border:1px solid var(--green-dim);border-radius:4px;padding:16px;min-height:320px;max-height:600px;overflow:auto;color:#dfffe4;font-family:system-ui,sans-serif;font-size:14px;line-height:1.6;}
+  .md-preview h1,.md-preview h2,.md-preview h3{color:var(--green);border-bottom:1px solid var(--green-faint);padding-bottom:4px;}
+  .md-preview code{background:var(--green-faint);padding:1px 5px;border-radius:3px;}
+  .md-preview pre{background:#000;padding:10px;border-radius:4px;overflow:auto;}
+  .md-preview a{color:var(--green);}
+  .md-preview img{max-width:100%;}
+
+  /* ---------- NEW: selection checkboxes / bulk actions ---------- */
+  .list-item input[type=checkbox]{width:auto;margin-right:8px;}
+  .bulk-bar{display:none;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--yellow);border-radius:4px;margin-bottom:8px;font-size:12.5px;color:var(--yellow);}
+  .bulk-bar.show{display:flex;}
+
+  /* ---------- NEW: commit diff expand ---------- */
+  .commit-diff{display:none;padding:10px 12px;border-top:1px dashed var(--green-faint);font-size:11.5px;background:#050805;}
+  .commit-diff.show{display:block;}
+  .commit-diff .file-patch{margin-bottom:10px;}
+  .commit-diff .file-patch .fname{color:var(--yellow);margin-bottom:4px;}
+  .commit-diff pre{white-space:pre-wrap;word-break:break-all;margin:0;color:var(--green-dim);}
+  .commit-diff pre .add{color:var(--green);}
+  .commit-diff pre .del{color:var(--red);}
+
+  /* ---------- NEW: search tab ---------- */
+  .search-result{padding:9px 12px;border-bottom:1px solid var(--green-faint);font-size:12.5px;cursor:pointer;}
+  .search-result:hover{background:var(--panel2);}
+  .search-result .path{color:var(--green);}
+  .search-result .repo-name{color:var(--green-dim);font-size:11px;}
+
+  /* ---------- NEW: PR / Issues ---------- */
+  .pi-item{padding:10px 12px;border-bottom:1px solid var(--green-faint);font-size:12.5px;}
+  .pi-item .title{color:var(--green);}
+  .pi-item .meta{color:var(--green-dim);font-size:11px;margin-top:3px;}
+  .pi-badge{font-size:10px;padding:1px 6px;border-radius:3px;border:1px solid var(--green-dim);}
+  .pi-badge.open{border-color:var(--green);color:var(--green);}
+  .pi-badge.closed{border-color:var(--red);color:var(--red);}
 
   /* ---------- MOBILE RESPONSIVE ---------- */
   @media (max-width: 680px){
