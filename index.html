@@ -265,6 +265,10 @@
   <div class="titlebar">
     <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
     <span>root@github-control:~</span>
+    <div class="topbar-right">
+      <span class="rate-badge" id="rateBadge" title="GitHub API rate limit">rate: --/--</span>
+      <button class="theme-toggle" id="themeToggleBtn" type="button" title="Tungi/kunduzgi rejim">🌓 tema</button>
+    </div>
   </div>
 
   <div class="shell">
@@ -282,6 +286,7 @@
       </div>
       <div class="connect-gate">
         <div class="status" id="connectStatus"></div>
+        <div class="scope-warn" id="scopeWarn" style="display:none;"></div>
       </div>
       <div class="note">
         ⚠ token faqat brauzer xotirasida (RAM) turadi, sahifa yopilsa yo'qoladi, hech qayerga yuborilmaydi (to'g'ridan-to'g'ri api.github.com ga ketadi).<br>
@@ -332,6 +337,9 @@
         <div class="tab" data-tab="upload">upload folder</div>
         <div class="tab" data-tab="commits">commits</div>
         <div class="tab" data-tab="repos">repos</div>
+        <div class="tab" data-tab="search">search</div>
+        <div class="tab" data-tab="issues">issues</div>
+        <div class="tab" data-tab="prs">pull requests</div>
       </div>
 
       <!-- FILE BROWSER -->
@@ -339,6 +347,10 @@
         <div class="breadcrumb" id="breadcrumb">~/</div>
         <div class="field" style="margin-bottom:8px;">
           <input type="text" id="fileSearch" placeholder="🔍 joriy papkada qidirish...">
+        </div>
+        <div class="bulk-bar" id="bulkBar">
+          <span id="bulkCount">0 ta tanlangan</span>
+          <button class="small danger" id="bulkDeleteBtn" type="button">&gt; tanlanganlarni o'chirish</button>
         </div>
         <div class="list" id="fileList"></div>
 
@@ -371,8 +383,9 @@
             </div>
             <div class="progress-outer"><div class="progress-inner" id="singleUploadProgress"></div></div>
           </div>
-          <div class="field" style="max-width:140px;">
+          <div class="field" style="max-width:140px;display:flex;flex-direction:column;gap:6px;">
             <button id="uploadSingleFileBtn" style="width:100%;">&gt; upload</button>
+            <button id="cancelSingleUploadBtn" class="small ghost" type="button" style="width:100%;display:none;">&gt; bekor qilish</button>
           </div>
         </div>
 
@@ -382,9 +395,15 @@
               <label id="editingLabel">editing</label>
             </div>
           </div>
+          <div class="img-preview-wrap" id="imgPreviewWrap" style="display:none;">
+            <img id="imgPreviewEl" alt="rasm ko'rinishi">
+          </div>
           <textarea class="code" id="editorArea" spellcheck="false"></textarea>
+          <div class="md-preview" id="mdPreview" style="display:none;"></div>
           <div class="row" style="margin-top:10px;flex-wrap:wrap;">
             <button id="saveFileBtn">&gt; save / commit (Ctrl+S)</button>
+            <button id="renameFileBtn" class="ghost">&gt; rename/move</button>
+            <button id="mdPreviewBtn" class="ghost" style="display:none;">&gt; markdown preview</button>
             <button id="deleteFileBtn" class="danger">&gt; delete file</button>
             <a id="downloadFileBtn" class="button-like" style="display:none;">&gt; download</a>
             <button id="closeEditorBtn" class="ghost">&gt; close</button>
@@ -410,7 +429,10 @@
           <input type="checkbox" id="stripRootFolder" checked style="width:auto;">
           <label class="plain" style="margin:0;display:inline;" for="stripRootFolder">faqat ichidagi fayllarni yukla (tashqi papka nomisiz)</label>
         </div>
-        <button id="uploadBtn">&gt; run upload</button>
+        <div class="row" style="gap:8px;">
+          <button id="uploadBtn">&gt; run upload</button>
+          <button id="cancelUploadBtn" class="ghost" type="button" style="display:none;">&gt; bekor qilish</button>
+        </div>
         <div class="progress-outer"><div class="progress-inner" id="uploadProgress"></div></div>
       </div>
 
@@ -438,6 +460,30 @@
             <button id="createRepoBtn" style="width:100%;">&gt; create</button>
           </div>
         </div>
+        <div class="row">
+          <div class="field">
+            <label>.gitignore shabloni (ixtiyoriy)</label>
+            <select id="newRepoGitignore">
+              <option value="">— tanlanmagan —</option>
+              <option value="Node">Node</option>
+              <option value="Python">Python</option>
+              <option value="Java">Java</option>
+              <option value="Go">Go</option>
+              <option value="VisualStudioCode">VisualStudioCode</option>
+              <option value="macOS">macOS</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>litsenziya (ixtiyoriy)</label>
+            <select id="newRepoLicense">
+              <option value="">— tanlanmagan —</option>
+              <option value="mit">MIT</option>
+              <option value="apache-2.0">Apache 2.0</option>
+              <option value="gpl-3.0">GPL v3</option>
+              <option value="unlicense">Unlicense</option>
+            </select>
+          </div>
+        </div>
         <div class="field">
           <input type="text" id="repoSearch" placeholder="🔍 repo qidirish...">
         </div>
@@ -461,7 +507,81 @@
           <label>description</label>
           <input type="text" id="repoDescInput" placeholder="repo tavsifi">
         </div>
-        <button id="updateRepoSettingsBtn">&gt; apply settings</button>
+        <div class="row" style="gap:8px;">
+          <button id="updateRepoSettingsBtn">&gt; apply settings</button>
+          <button id="forkRepoBtn" class="ghost" type="button">&gt; fork this repo</button>
+        </div>
+
+        <div class="sub" style="margin-top:18px;">&gt; collaborators</div>
+        <div class="list" id="collabList" style="margin-top:0px;"></div>
+        <div class="row">
+          <div class="field">
+            <label>github_username</label>
+            <input type="text" id="collabUsernameInput" placeholder="masalan: octocat">
+          </div>
+          <div class="field" style="max-width:150px;">
+            <label>ruxsat</label>
+            <select id="collabPermission">
+              <option value="pull">read</option>
+              <option value="push" selected>write</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div class="field" style="max-width:130px;display:flex;align-items:flex-end;">
+            <button id="addCollabBtn" style="width:100%;">&gt; taklif qilish</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEARCH -->
+      <div class="panel" id="panel-search">
+        <div class="row">
+          <div class="field">
+            <input type="text" id="codeSearchInput" placeholder="🔍 butun repo bo'yicha kod qidirish...">
+          </div>
+          <div class="field" style="max-width:130px;">
+            <button id="codeSearchBtn" style="width:100%;">&gt; qidirish</button>
+          </div>
+        </div>
+        <div class="list" id="codeSearchResults"></div>
+      </div>
+
+      <!-- ISSUES -->
+      <div class="panel" id="panel-issues">
+        <div class="row">
+          <div class="field">
+            <input type="text" id="newIssueTitle" placeholder="yangi issue sarlavhasi">
+          </div>
+          <div class="field" style="max-width:130px;">
+            <button id="createIssueBtn" style="width:100%;">&gt; yaratish</button>
+          </div>
+        </div>
+        <textarea class="code" id="newIssueBody" placeholder="tavsif (ixtiyoriy)" style="min-height:80px;margin-bottom:10px;"></textarea>
+        <div class="list" id="issuesList"></div>
+        <button id="loadMoreIssues" class="small" style="margin-top:10px;">&gt; load more</button>
+      </div>
+
+      <!-- PULL REQUESTS -->
+      <div class="panel" id="panel-prs">
+        <div class="sub">&gt; yangi pull request</div>
+        <div class="row">
+          <div class="field">
+            <label>head (qaysi branchdan)</label>
+            <input type="text" id="prHead" placeholder="masalan: feature-x">
+          </div>
+          <div class="field">
+            <label>base (qaysi branchga)</label>
+            <input type="text" id="prBase" placeholder="masalan: main">
+          </div>
+        </div>
+        <div class="field">
+          <input type="text" id="prTitle" placeholder="PR sarlavhasi">
+        </div>
+        <textarea class="code" id="prBody" placeholder="tavsif (ixtiyoriy)" style="min-height:70px;margin-bottom:10px;"></textarea>
+        <button id="createPrBtn">&gt; pull request yaratish</button>
+        <div class="sub" style="margin-top:16px;">&gt; mavjud pull requestlar</div>
+        <div class="list" id="prsList"></div>
+        <button id="loadMorePrs" class="small" style="margin-top:10px;">&gt; load more</button>
       </div>
 
       <div class="console" id="console"><div class="line sys">$ tizim tayyor</div></div>
@@ -483,8 +603,39 @@ const state = {
   editingReadonly: false,
   editingOriginalContent: null,
   editingRawBase64: null,
+  editingIsImage: false,
   commitsPage: 1,
+  rateLimit: {remaining:null, limit:null},
+  tokenScopes: null,
+  selectedForBulk: new Set(),
+  uploadCancelled: false,
+  singleUploadCancelled: false,
+  issuesPage: 1,
+  prsPage: 1,
 };
+
+// kengaytmalarga qarab fayl turi
+const IMAGE_EXTS = new Set(['png','jpg','jpeg','gif','webp','bmp','ico']);
+const KNOWN_BINARY_EXTS = new Set(['zip','gz','tar','rar','7z','pdf','exe','dll','so','bin','mp3','mp4','mov','wav','ogg','ttf','otf','woff','woff2','psd','ai','sqlite','db','class','jar','pyc']);
+function fileExt(name){ return (name.split('.').pop() || '').toLowerCase(); }
+function formatSize(bytes){
+  if(bytes == null) return '';
+  if(bytes < 1024) return bytes + ' B';
+  if(bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  if(bytes < 1024*1024*1024) return (bytes/(1024*1024)).toFixed(1) + ' MB';
+  return (bytes/(1024*1024*1024)).toFixed(1) + ' GB';
+}
+function cmModeForExt(ext){
+  const map = {
+    js:'javascript', mjs:'javascript', jsx:'javascript', ts:'javascript', tsx:'javascript', json:'javascript',
+    html:'htmlmixed', htm:'htmlmixed', xml:'xml', svg:'xml',
+    css:'css', scss:'css',
+    py:'python', md:'markdown', markdown:'markdown', sh:'shell', bash:'shell',
+    sql:'sql', yml:'yaml', yaml:'yaml',
+    c:'text/x-csrc', cpp:'text/x-c++src', h:'text/x-csrc', java:'text/x-java',
+  };
+  return map[ext] || null;
+}
 
 const consoleEl = document.getElementById('console');
 function log(msg, type='sys'){
@@ -560,6 +711,16 @@ async function gh(path, options={}){
       ...(options.headers || {})
     }
   });
+  const remaining = res.headers.get('x-ratelimit-remaining');
+  const limit = res.headers.get('x-ratelimit-limit');
+  if(remaining !== null){
+    state.rateLimit = {remaining, limit};
+    updateRateBadge();
+  }
+  const scopes = res.headers.get('x-oauth-scopes');
+  if(scopes !== null){
+    state.tokenScopes = scopes;
+  }
   let body = null;
   try{ body = await res.json(); }catch(e){ body = null; }
   if(!res.ok){
@@ -567,6 +728,31 @@ async function gh(path, options={}){
     throw new Error(msg);
   }
   return body;
+}
+
+function updateRateBadge(){
+  const badge = document.getElementById('rateBadge');
+  if(!badge) return;
+  const {remaining, limit} = state.rateLimit;
+  badge.textContent = `rate: ${remaining ?? '--'}/${limit ?? '--'}`;
+  badge.style.color = (remaining !== null && Number(remaining) < 50) ? 'var(--red)' : '';
+}
+
+function checkTokenScopes(){
+  const warnEl = document.getElementById('scopeWarn');
+  if(!warnEl) return;
+  if(state.tokenScopes === null || state.tokenScopes === ''){
+    // fine-grained tokenlar bu headerni umuman qaytarmaydi — tekshirib bo'lmaydi
+    warnEl.style.display = 'none';
+    return;
+  }
+  const scopes = state.tokenScopes.split(',').map(s => s.trim());
+  if(!scopes.includes('repo') && !scopes.some(s => s.startsWith('repo'))){
+    warnEl.textContent = `⚠ token scope'lari: [${scopes.join(', ') || 'yo\'q'}] — "repo" huquqi topilmadi, ba'zi amallar (repo yaratish/o'chirish, sozlash) ishlamasligi mumkin.`;
+    warnEl.style.display = 'block';
+  } else {
+    warnEl.style.display = 'none';
+  }
 }
 
 // paginated GET helper - 100 tadan ko'p bo'lgan ro'yxatlarni to'liq olib keladi
@@ -630,6 +816,8 @@ connectBtn.addEventListener('click', guarded(connectBtn, async () => {
     const user = await gh('/user');
     state.user = user;
     statusEl.textContent = `✓ ulandi: ${user.login}`;
+    checkTokenScopes();
+    updateRateBadge();
     await loadRepos();
     document.getElementById('authGate').style.display = 'none';
     document.getElementById('mainApp').style.display = 'block';
@@ -646,6 +834,15 @@ connectBtn.addEventListener('click', guarded(connectBtn, async () => {
 document.getElementById('token').addEventListener('keydown', (e) => {
   if(e.key === 'Enter') connectBtn.click();
 });
+
+// ---------- THEME TOGGLE ----------
+(function initTheme(){
+  const saved = (function(){ try{ return null; }catch(e){ return null; } })(); // localStorage ishlatilmaydi (artifact cheklovi)
+  document.getElementById('themeToggleBtn').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', cur === 'light' ? 'dark' : 'light');
+  });
+})();
 
 document.getElementById('toggleTokenBtn').addEventListener('click', () => {
   const inp = document.getElementById('token');
@@ -773,7 +970,14 @@ function renderRepoManageList(){
 
 document.getElementById('repoSearch').addEventListener('input', renderRepoManageList);
 
-document.getElementById('repoSelect').addEventListener('change', (e) => selectRepo(e.target.value));
+document.getElementById('repoSelect').addEventListener('change', async (e) => {
+  try{
+    await selectRepo(e.target.value);
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+});
 
 async function loadAllBranches(owner, name){
   return ghAllPages(`/repos/${owner}/${name}/branches`);
@@ -798,14 +1002,23 @@ async function selectRepo(fullName){
 
   document.getElementById('repoVisibilityInput').value = repoData.private ? 'true' : 'false';
   document.getElementById('repoDescInput').value = repoData.description || '';
+  loadCollaborators().catch(()=>{});
+  delete document.getElementById('issuesList').dataset.loaded;
+  delete document.getElementById('prsList').dataset.loaded;
+  document.getElementById('codeSearchResults').innerHTML = '';
 }
 
 document.getElementById('branchSelect').addEventListener('change', async (e) => {
-  state.currentBranch = e.target.value;
-  state.currentPath = '';
-  await loadFileList();
-  state.commitsPage = 1;
-  await loadCommits(true);
+  try{
+    state.currentBranch = e.target.value;
+    state.currentPath = '';
+    await loadFileList();
+    state.commitsPage = 1;
+    await loadCommits(true);
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
 });
 
 // ---------- BRANCH MANAGEMENT ----------
@@ -912,6 +1125,84 @@ updateRepoSettingsBtn.addEventListener('click', guarded(updateRepoSettingsBtn, a
   }
 }, '...'));
 
+// BUG FIX: repo sozlamalari maydonlarida Enter bosilganda ham submit bo'lishi
+document.getElementById('repoRenameInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') updateRepoSettingsBtn.click(); });
+document.getElementById('repoDescInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') updateRepoSettingsBtn.click(); });
+
+// ---------- FORK REPO ----------
+const forkRepoBtn = document.getElementById('forkRepoBtn');
+forkRepoBtn.addEventListener('click', guarded(forkRepoBtn, async () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
+  const { owner, name } = state.currentRepo;
+  try{
+    log(`$ fork qilinmoqda: ${owner}/${name}`, 'sys');
+    const forked = await gh(`/repos/${owner}/${name}/forks`, { method:'POST' });
+    log(`✓ fork qilindi: ${forked.full_name}`, 'ok');
+    toast(`Fork qilindi: ${forked.full_name}`, 'ok');
+    await loadRepos();
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
+
+// ---------- COLLABORATORS ----------
+async function loadCollaborators(){
+  if(!state.currentRepo) return;
+  const { owner, name } = state.currentRepo;
+  const listEl = document.getElementById('collabList');
+  listEl.innerHTML = `<div class="list-item"><span class="meta">yuklanmoqda...</span></div>`;
+  try{
+    const collabs = await gh(`/repos/${owner}/${name}/collaborators?per_page=100`);
+    if(!collabs.length){
+      listEl.innerHTML = `<div class="list-item"><span class="meta">hamkorlar yo'q</span></div>`;
+      return;
+    }
+    listEl.innerHTML = collabs.map(c => `
+      <div class="list-item">
+        <span>${escapeHtml(c.login)} <span class="meta">(${escapeHtml(c.role_name || c.permissions && Object.keys(c.permissions).find(k=>c.permissions[k]) || '')})</span></span>
+        <button class="small danger" data-remove-collab="${escapeHtml(c.login)}">o'chirish</button>
+      </div>
+    `).join('');
+    listEl.querySelectorAll('[data-remove-collab]').forEach(btn => {
+      btn.addEventListener('click', guarded(btn, async () => {
+        const login = btn.dataset.removeCollab;
+        if(!confirm(`${login} hamkorlikdan olib tashlansinmi?`)) return;
+        try{
+          await gh(`/repos/${owner}/${name}/collaborators/${login}`, { method:'DELETE' });
+          log(`✓ hamkor olib tashlandi: ${login}`, 'ok');
+          toast('Hamkor olib tashlandi', 'ok');
+          await loadCollaborators();
+        }catch(err){
+          log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+          toast(friendlyError(err.message), 'err');
+        }
+      }, '...'));
+    });
+  }catch(err){
+    listEl.innerHTML = `<div class="list-item"><span class="meta">✗ ${escapeHtml(friendlyError(err.message))}</span></div>`;
+  }
+}
+
+const addCollabBtn = document.getElementById('addCollabBtn');
+addCollabBtn.addEventListener('click', guarded(addCollabBtn, async () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
+  const { owner, name } = state.currentRepo;
+  const username = document.getElementById('collabUsernameInput').value.trim();
+  const permission = document.getElementById('collabPermission').value;
+  if(!username){ toast('username kiritilmagan', 'err'); return; }
+  try{
+    await gh(`/repos/${owner}/${name}/collaborators/${username}`, { method:'PUT', body: JSON.stringify({ permission }) });
+    log(`✓ taklif yuborildi: ${username} (${permission})`, 'ok');
+    toast(`Taklif yuborildi: ${username}`, 'ok');
+    document.getElementById('collabUsernameInput').value = '';
+    await loadCollaborators();
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
+
 // ---------- TABS ----------
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -919,6 +1210,15 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    if(!state.currentRepo) return;
+    if(tab.dataset.tab === 'issues' && !document.getElementById('issuesList').dataset.loaded){
+      state.issuesPage = 1;
+      loadIssues(true).catch(()=>{});
+    }
+    if(tab.dataset.tab === 'prs' && !document.getElementById('prsList').dataset.loaded){
+      state.prsPage = 1;
+      loadPrs(true).catch(()=>{});
+    }
   });
 });
 
@@ -945,6 +1245,7 @@ async function loadFileList(){
   if(!state.currentRepo) return;
   renderBreadcrumb();
   document.getElementById('fileSearch').value = '';
+  state.selectedForBulk.clear();
   const { owner, name } = state.currentRepo;
   const listEl = document.getElementById('fileList');
   listEl.innerHTML = `<div class="list-item"><span class="meta">yuklanmoqda...</span></div>`;
@@ -964,6 +1265,13 @@ async function loadFileList(){
   }
 }
 
+function updateBulkBar(){
+  const bar = document.getElementById('bulkBar');
+  const count = state.selectedForBulk.size;
+  document.getElementById('bulkCount').textContent = `${count} ta tanlangan`;
+  bar.classList.toggle('show', count > 0);
+}
+
 function renderFileList(){
   const listEl = document.getElementById('fileList');
   const filter = (document.getElementById('fileSearch').value || '').toLowerCase();
@@ -977,15 +1285,18 @@ function renderFileList(){
     item.className = 'list-item';
     const icon = entry.type === 'dir' ? '📁' : fileIcon(entry.name);
     item.innerHTML = `
-      <div><span class="name">${icon} ${escapeHtml(entry.name)}</span></div>
+      <div style="display:flex;align-items:center;">
+        ${entry.type === 'file' ? `<input type="checkbox" data-bulk-check="${escapeHtml(entry.path)}" ${state.selectedForBulk.has(entry.path) ? 'checked' : ''}>` : '<span style="display:inline-block;width:18px;"></span>'}
+        <span class="name">${icon} ${escapeHtml(entry.name)}</span>
+      </div>
       <div class="icon-btns">
-        <span class="meta">${entry.type === 'file' ? (entry.size + ' B') : ''}</span>
+        <span class="meta">${entry.type === 'file' ? formatSize(entry.size) : ''}</span>
         ${entry.type === 'file'
           ? `<button class="small danger" data-quickdel="${escapeHtml(entry.path)}" data-sha="${escapeHtml(entry.sha)}">del</button>`
           : `<button class="small danger" data-delfolder="${escapeHtml(entry.path)}">del folder</button>`}
       </div>`;
     item.addEventListener('click', (e) => {
-      if(e.target.closest('button')) return;
+      if(e.target.closest('button') || e.target.matches('input[type=checkbox]')) return;
       if(entry.type === 'dir'){
         state.currentPath = entry.path;
         loadFileList();
@@ -994,6 +1305,15 @@ function renderFileList(){
       }
     });
     listEl.appendChild(item);
+  });
+  listEl.querySelectorAll('[data-bulk-check]').forEach(chk => {
+    chk.addEventListener('click', (e) => e.stopPropagation());
+    chk.addEventListener('change', () => {
+      const p = chk.getAttribute('data-bulk-check');
+      if(chk.checked) state.selectedForBulk.add(p);
+      else state.selectedForBulk.delete(p);
+      updateBulkBar();
+    });
   });
   listEl.querySelectorAll('[data-quickdel]').forEach(btn => {
     btn.addEventListener('click', guarded(btn, async (e) => {
@@ -1012,9 +1332,47 @@ function renderFileList(){
       await deleteFolder(p);
     }, '...'));
   });
+  updateBulkBar();
 }
 
 document.getElementById('fileSearch').addEventListener('input', renderFileList);
+
+// ---------- BULK DELETE ----------
+const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+bulkDeleteBtn.addEventListener('click', guarded(bulkDeleteBtn, async () => {
+  if(!state.currentRepo || state.selectedForBulk.size === 0) return;
+  const paths = Array.from(state.selectedForBulk);
+  if(!confirm(`${paths.length} ta fayl bitta commit bilan o'chirilsinmi? Bu qaytarib bo'lmaydi.`)) return;
+  const { owner, name } = state.currentRepo;
+  const branch = state.currentBranch;
+  const base = `/repos/${owner}/${name}`;
+  try{
+    log(`$ ${paths.length} ta fayl o'chirilmoqda...`, 'sys');
+    const refData = await gh(`${base}/git/refs/heads/${branch}`);
+    const latestCommitSha = refData.object.sha;
+    const commitData = await gh(`${base}/git/commits/${latestCommitSha}`);
+    const rootTreeSha = commitData.tree.sha;
+    const fullTree = await gh(`${base}/git/trees/${rootTreeSha}?recursive=1`);
+    const pathSet = new Set(paths);
+    const remainingItems = fullTree.tree.filter(item => ['blob','commit'].includes(item.type) && !pathSet.has(item.path));
+    const newTree = await gh(`${base}/git/trees`, {
+      method:'POST',
+      body: JSON.stringify({ tree: remainingItems.map(b => ({ path:b.path, mode:b.mode, type:b.type, sha:b.sha })) })
+    });
+    const newCommit = await gh(`${base}/git/commits`, {
+      method:'POST',
+      body: JSON.stringify({ message:`${paths.length} ta faylni o'chirish (bulk delete)`, tree:newTree.sha, parents:[latestCommitSha] })
+    });
+    await gh(`${base}/git/refs/heads/${branch}`, { method:'PATCH', body: JSON.stringify({ sha:newCommit.sha }) });
+    log(`✓ ${paths.length} ta fayl o'chirildi`, 'ok');
+    toast(`${paths.length} ta fayl o'chirildi`, 'ok');
+    state.selectedForBulk.clear();
+    await loadFileList();
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
 
 // GitHub'ning contents API'si o'chirishdan keyin bir zumga eski (keshlangan)
 // ro'yxatni qaytarishi mumkin. Shu sabab qayta fetch qilish o'rniga, o'chirilgan
@@ -1106,29 +1464,89 @@ async function fetchFileRaw(owner, name, path){
   return { sha: data.sha, base64: (blob.content || '').replace(/\n/g,''), downloadUrl: data.download_url || null };
 }
 
+// ---------- CODEMIRROR (syntax highlighting) ----------
+let cmEditor = null;
+function ensureCM(){
+  if(cmEditor) return cmEditor;
+  const area = document.getElementById('editorArea');
+  cmEditor = CodeMirror.fromTextArea(area, {
+    lineNumbers: true,
+    theme: 'material-darker',
+    mode: null,
+    lineWrapping: true,
+    viewportMargin: Infinity,
+  });
+  cmEditor.on('change', () => {
+    cmEditor.save();
+    state.editingDirty = state.editingOriginalContent !== null &&
+      document.getElementById('editorArea').value !== state.editingOriginalContent;
+  });
+  cmEditor.setOption('extraKeys', {
+    'Ctrl-S': () => { const b = document.getElementById('saveFileBtn'); if(!b.disabled) b.click(); },
+    'Cmd-S': () => { const b = document.getElementById('saveFileBtn'); if(!b.disabled) b.click(); },
+  });
+  return cmEditor;
+}
+
+const IMAGE_MIME = {png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',bmp:'image/bmp',ico:'image/x-icon'};
+
 async function openFile(path, sha){
   const { owner, name } = state.currentRepo;
   try{
     const raw = await fetchFileRaw(owner, name, path);
+    const ext = fileExt(path);
     let content = '';
     let readonly = false;
-    try{
-      content = b64decode(raw.base64);
-    }catch(e){
+    let isImage = false;
+
+    if(IMAGE_EXTS.has(ext)){
+      isImage = true;
       readonly = true;
-      content = "⚠ bu faylni matn sifatida ochib bo'lmadi (binary yoki matn-emas kodlash). Buzilmasligi uchun tahrirlash va saqlash o'chirilgan — 'download' tugmasidan foydalaning.";
+    }else if(KNOWN_BINARY_EXTS.has(ext)){
+      readonly = true;
+      content = "⚠ bu binary fayl turi (" + ext + ") — matn sifatida tahrirlab bo'lmaydi. 'download' tugmasidan foydalaning.";
+    }else{
+      try{
+        content = b64decode(raw.base64);
+      }catch(e){
+        readonly = true;
+        content = "⚠ bu faylni matn sifatida ochib bo'lmadi (binary yoki matn-emas kodlash). Buzilmasligi uchun tahrirlash va saqlash o'chirilgan — 'download' tugmasidan foydalaning.";
+      }
     }
 
     state.editingFile = { path, sha: raw.sha };
     state.editingReadonly = readonly;
     state.editingRawBase64 = raw.base64;
-    state.editingOriginalContent = readonly ? null : content;
+    state.editingOriginalContent = (readonly || isImage) ? null : content;
     state.editingDirty = false;
+    state.editingIsImage = isImage;
 
     document.getElementById('editingLabel').textContent = `editing: ${path}` + (readonly ? " (faqat o'qish)" : '');
-    const area = document.getElementById('editorArea');
-    area.value = content;
-    area.readOnly = readonly;
+
+    const imgWrap = document.getElementById('imgPreviewWrap');
+    const mdBtn = document.getElementById('mdPreviewBtn');
+    const mdPrev = document.getElementById('mdPreview');
+    mdPrev.style.display = 'none';
+    mdBtn.textContent = '> markdown preview';
+
+    if(isImage){
+      imgWrap.style.display = 'block';
+      document.getElementById('imgPreviewEl').src = `data:${IMAGE_MIME[ext] || 'image/png'};base64,${raw.base64}`;
+      ensureCM(); cmEditor.getWrapperElement().style.display = 'none';
+      mdBtn.style.display = 'none';
+    }else{
+      imgWrap.style.display = 'none';
+      document.getElementById('imgPreviewEl').src = '';
+      const cm = ensureCM();
+      cm.getWrapperElement().style.display = 'block';
+      cm.setValue(content);
+      cm.setOption('mode', cmModeForExt(ext));
+      cm.setOption('readOnly', readonly ? 'nocursor' : false);
+      cm.getWrapperElement().classList.toggle('readonly-cm', readonly);
+      setTimeout(() => cm.refresh(), 30);
+      mdBtn.style.display = (ext === 'md' || ext === 'markdown') ? 'inline-block' : 'none';
+    }
+
     document.getElementById('saveFileBtn').disabled = readonly;
     const dlBtn = document.getElementById('downloadFileBtn');
     dlBtn.style.display = 'inline-block';
@@ -1139,6 +1557,24 @@ async function openFile(path, sha){
     toast(friendlyError(err.message), 'err');
   }
 }
+
+document.getElementById('mdPreviewBtn').addEventListener('click', () => {
+  cmEditor.save();
+  const mdPrev = document.getElementById('mdPreview');
+  const mdBtn = document.getElementById('mdPreviewBtn');
+  const showingPreview = mdPrev.style.display === 'block';
+  if(showingPreview){
+    mdPrev.style.display = 'none';
+    cmEditor.getWrapperElement().style.display = 'block';
+    mdBtn.textContent = '> markdown preview';
+  }else{
+    const raw = document.getElementById('editorArea').value;
+    mdPrev.innerHTML = (typeof marked !== 'undefined') ? marked.parse(raw) : escapeHtml(raw);
+    mdPrev.style.display = 'block';
+    cmEditor.getWrapperElement().style.display = 'none';
+    mdBtn.textContent = '> matnga qaytish';
+  }
+});
 
 document.getElementById('downloadFileBtn').addEventListener('click', (e) => {
   e.preventDefault();
@@ -1161,18 +1597,8 @@ document.getElementById('downloadFileBtn').addEventListener('click', (e) => {
   }
 });
 
-document.getElementById('editorArea').addEventListener('input', () => {
-  state.editingDirty = state.editingOriginalContent !== null &&
-    document.getElementById('editorArea').value !== state.editingOriginalContent;
-});
-
-document.getElementById('editorArea').addEventListener('keydown', (e) => {
-  if((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')){
-    e.preventDefault();
-    const saveBtn = document.getElementById('saveFileBtn');
-    if(!saveBtn.disabled) saveBtn.click();
-  }
-});
+// ESLATMA: matn kiritish va Ctrl+S endi CodeMirror ('cmEditor')ning o'zi orqali
+// boshqariladi (yuqoridagi ensureCM() ichidagi 'change' hodisasi va extraKeys).
 
 window.addEventListener('beforeunload', (e) => {
   if(state.editingDirty){
@@ -1190,10 +1616,20 @@ function closeEditor(force){
   state.editingReadonly = false;
   state.editingOriginalContent = null;
   state.editingRawBase64 = null;
+  state.editingIsImage = false;
   document.getElementById('editorWrap').style.display = 'none';
+  document.getElementById('imgPreviewWrap').style.display = 'none';
+  document.getElementById('imgPreviewEl').src = '';
+  document.getElementById('mdPreview').style.display = 'none';
   const area = document.getElementById('editorArea');
   area.value = '';
   area.readOnly = false;
+  if(cmEditor){
+    cmEditor.setValue('');
+    cmEditor.setOption('readOnly', false);
+    cmEditor.getWrapperElement().classList.remove('readonly-cm');
+    cmEditor.getWrapperElement().style.display = 'block';
+  }
   document.getElementById('saveFileBtn').disabled = false;
   return true;
 }
@@ -1203,6 +1639,7 @@ const saveFileBtn = document.getElementById('saveFileBtn');
 saveFileBtn.addEventListener('click', guarded(saveFileBtn, async () => {
   if(!state.editingFile) return;
   if(state.editingReadonly){ toast("Bu fayl faqat o'qish uchun — saqlab bo'lmaydi", 'err'); return; }
+  if(cmEditor) cmEditor.save();
   const { owner, name } = state.currentRepo;
   const content = document.getElementById('editorArea').value;
   try{
@@ -1234,6 +1671,46 @@ deleteFileBtn.addEventListener('click', guarded(deleteFileBtn, async () => {
   if(!state.editingFile) return;
   if(!confirm(`"${state.editingFile.path}" o'chirilsinmi?`)) return;
   await deleteFile(state.editingFile.path, state.editingFile.sha);
+}, '...'));
+
+// ---------- RENAME / MOVE FILE ----------
+const renameFileBtn = document.getElementById('renameFileBtn');
+renameFileBtn.addEventListener('click', guarded(renameFileBtn, async () => {
+  if(!state.editingFile) return;
+  const oldPath = state.editingFile.path;
+  const newPath = prompt("Yangi yo'l/nom kiriting (papkani ham o'zgartirish mumkin):", oldPath);
+  if(!newPath || newPath.trim() === '' || newPath.trim() === oldPath) return;
+  const cleanNewPath = newPath.trim().replace(/^\/+/, '');
+  const { owner, name } = state.currentRepo;
+  try{
+    log(`$ ko'chirilmoqda: ${oldPath} -> ${cleanNewPath}`, 'sys');
+    if(state.editingIsImage || state.editingReadonly){
+      // binary/rasm fayllar uchun ham base64 orqali ko'chirish ishlaydi
+      await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(cleanNewPath).replace(/%2F/g,'/')}`, {
+        method:'PUT',
+        body: JSON.stringify({ message:`rename: ${oldPath} -> ${cleanNewPath}`, content: state.editingRawBase64, branch: state.currentBranch })
+      });
+    }else{
+      if(cmEditor) cmEditor.save();
+      const content = document.getElementById('editorArea').value;
+      await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(cleanNewPath).replace(/%2F/g,'/')}`, {
+        method:'PUT',
+        body: JSON.stringify({ message:`rename: ${oldPath} -> ${cleanNewPath}`, content: b64encode(content), branch: state.currentBranch })
+      });
+    }
+    await gh(`/repos/${owner}/${name}/contents/${encodeURIComponent(oldPath).replace(/%2F/g,'/')}`, {
+      method:'DELETE',
+      body: JSON.stringify({ message:`rename cleanup: remove ${oldPath}`, sha: state.editingFile.sha, branch: state.currentBranch })
+    });
+    log(`✓ ko'chirildi: ${oldPath} -> ${cleanNewPath}`, 'ok');
+    toast(`Ko'chirildi: ${cleanNewPath}`, 'ok');
+    closeEditor(true);
+    await loadFileList();
+    await loadCommits(true);
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
 }, '...'));
 
 async function deleteFile(path, sha){
@@ -1366,6 +1843,9 @@ async function uploadFilesViaGit(files, targetPath){
   const total = files.length;
   const treeItems = [];
   for(let i=0;i<total;i++){
+    if(state.singleUploadCancelled){
+      throw new Error('yuklash foydalanuvchi tomonidan bekor qilindi');
+    }
     const file = files[i];
     const fullPath = targetPath ? `${targetPath}/${file.name}` : file.name;
     log(`$ (${i+1}/${total}) yuklanmoqda: ${fullPath}`, 'sys');
@@ -1386,10 +1866,17 @@ async function uploadFilesViaGit(files, targetPath){
 }
 
 const uploadSingleFileBtn = document.getElementById('uploadSingleFileBtn');
+const cancelSingleUploadBtn = document.getElementById('cancelSingleUploadBtn');
+cancelSingleUploadBtn.addEventListener('click', () => {
+  state.singleUploadCancelled = true;
+  log('$ yuklash bekor qilinmoqda...', 'warn');
+});
 uploadSingleFileBtn.addEventListener('click', guarded(uploadSingleFileBtn, async () => {
   if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
   if(selectedSingleFiles.length === 0){ log('✗ fayl tanlanmagan', 'err'); toast('fayl tanlanmagan', 'err'); return; }
   singleUploadProgress.style.width = '0%';
+  state.singleUploadCancelled = false;
+  cancelSingleUploadBtn.style.display = 'block';
   try{
     const { count, sha } = await uploadFilesViaGit(selectedSingleFiles, state.currentPath);
     log(`✓ muvaffaqiyatli: ${count} fayl yuklandi (${sha.slice(0,7)})`, 'ok');
@@ -1404,6 +1891,7 @@ uploadSingleFileBtn.addEventListener('click', guarded(uploadSingleFileBtn, async
     toast(friendlyError(err.message), 'err');
   }finally{
     singleUploadProgress.style.width = '0%';
+    cancelSingleUploadBtn.style.display = 'none';
   }
 }, '...'));
 
@@ -1417,16 +1905,53 @@ async function loadCommits(reset=false){
   try{
     const commits = await gh(`/repos/${owner}/${name}/commits?sha=${state.currentBranch}&per_page=20&page=${state.commitsPage}`);
     commits.forEach(c => {
+      const wrap = document.createElement('div');
       const item = document.createElement('div');
       item.className = 'list-item';
+      item.style.cursor = 'pointer';
       const date = new Date(c.commit.author.date).toLocaleString();
       item.innerHTML = `
         <div>
           <div class="name">${escapeHtml(c.commit.message.split('\n')[0])}</div>
           <div class="meta">${escapeHtml(c.commit.author.name)} • ${escapeHtml(date)}</div>
         </div>
-        <div class="meta">${escapeHtml(c.sha.slice(0,7))}</div>`;
-      listEl.appendChild(item);
+        <div class="meta">${escapeHtml(c.sha.slice(0,7))} ▾</div>`;
+      const diffEl = document.createElement('div');
+      diffEl.className = 'commit-diff';
+      diffEl.dataset.loaded = '';
+      let diffLoading = false;
+      item.addEventListener('click', async () => {
+        const isShown = diffEl.classList.contains('show');
+        if(isShown){ diffEl.classList.remove('show'); return; }
+        if(diffLoading) return;
+        if(!diffEl.dataset.loaded){
+          diffLoading = true;
+          diffEl.innerHTML = `<span class="meta">yuklanmoqda...</span>`;
+          try{
+            const full = await gh(`/repos/${owner}/${name}/commits/${c.sha}`);
+            const files = full.files || [];
+            if(files.length === 0){
+              diffEl.innerHTML = `<span class="meta">o'zgargan fayllar topilmadi</span>`;
+            }else{
+              diffEl.innerHTML = files.map(f => {
+                const patchLines = (f.patch || "(patch mavjud emas — binary yoki juda katta fayl)").split('\n').map(l => {
+                  const cls = l.startsWith('+') ? 'add' : (l.startsWith('-') ? 'del' : '');
+                  return cls ? `<span class="${cls}">${escapeHtml(l)}</span>` : escapeHtml(l);
+                }).join('\n');
+                return `<div class="file-patch"><div class="fname">${escapeHtml(f.filename)} (+${f.additions}/-${f.deletions})</div><pre>${patchLines}</pre></div>`;
+              }).join('');
+            }
+            diffEl.dataset.loaded = '1';
+          }catch(err){
+            diffEl.innerHTML = `<span class="meta err">✗ ${escapeHtml(friendlyError(err.message))}</span>`;
+          }
+          diffLoading = false;
+        }
+        diffEl.classList.add('show');
+      });
+      wrap.appendChild(item);
+      wrap.appendChild(diffEl);
+      listEl.appendChild(wrap);
     });
   }catch(err){
     log(`✗ xato: ${friendlyError(err.message)}`, 'err');
@@ -1444,16 +1969,23 @@ const newRepoNameInput = document.getElementById('newRepoName');
 createRepoBtn.addEventListener('click', guarded(createRepoBtn, async () => {
   const nameVal = newRepoNameInput.value.trim();
   const vis = document.getElementById('newRepoVisibility').value;
+  const gitignoreTemplate = document.getElementById('newRepoGitignore').value;
+  const licenseTemplate = document.getElementById('newRepoLicense').value;
   if(!nameVal){ log('✗ repo nomi kiritilmagan', 'err'); toast('repo nomi kiritilmagan', 'err'); return; }
   try{
     log(`$ repo yaratilmoqda: ${nameVal}`, 'sys');
+    const payload = { name: nameVal, private: vis === 'private', auto_init: true };
+    if(gitignoreTemplate) payload.gitignore_template = gitignoreTemplate;
+    if(licenseTemplate) payload.license_template = licenseTemplate;
     await gh('/user/repos', {
       method: 'POST',
-      body: JSON.stringify({ name: nameVal, private: vis === 'private', auto_init: true })
+      body: JSON.stringify(payload)
     });
     log(`✓ repo yaratildi: ${nameVal}`, 'ok');
     toast(`Repo yaratildi: ${nameVal}`, 'ok');
     newRepoNameInput.value = '';
+    document.getElementById('newRepoGitignore').value = '';
+    document.getElementById('newRepoLicense').value = '';
     await loadRepos();
   }catch(err){
     log(`✗ xato: ${friendlyError(err.message)}`, 'err');
@@ -1499,6 +2031,12 @@ folderInput.addEventListener('change', (e) => {
   }));
 });
 
+const cancelUploadBtn = document.getElementById('cancelUploadBtn');
+cancelUploadBtn.addEventListener('click', () => {
+  state.uploadCancelled = true;
+  log('$ yuklash bekor qilinmoqda...', 'warn');
+});
+
 uploadBtn.addEventListener('click', guarded(uploadBtn, async () => {
   if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
   if(selectedFiles.length === 0){ log('✗ papka tanlanmagan', 'err'); toast('papka tanlanmagan', 'err'); return; }
@@ -1507,6 +2045,8 @@ uploadBtn.addEventListener('click', guarded(uploadBtn, async () => {
   const targetPath = document.getElementById('targetpath').value.trim().replace(/^\/+|\/+$/g, '');
 
   uploadProgress.style.width = '0%';
+  state.uploadCancelled = false;
+  cancelUploadBtn.style.display = 'inline-block';
   log(`$ upload boshlandi: ${owner}/${name}@${branch}`, 'sys');
 
   try{
@@ -1520,6 +2060,9 @@ uploadBtn.addEventListener('click', guarded(uploadBtn, async () => {
     const total = selectedFiles.length;
     const treeItems = [];
     for(let i=0;i<total;i++){
+      if(state.uploadCancelled){
+        throw new Error('yuklash foydalanuvchi tomonidan bekor qilindi');
+      }
       const file = selectedFiles[i];
       let relPath = file.webkitRelativePath || file.name;
       if(stripRoot && relPath.includes('/')){
@@ -1551,6 +2094,156 @@ uploadBtn.addEventListener('click', guarded(uploadBtn, async () => {
     toast(friendlyError(err.message), 'err');
   }finally{
     uploadProgress.style.width = '0%';
+    cancelUploadBtn.style.display = 'none';
   }
 }, '...'));
+
+// ---------- CODE SEARCH (butun repo bo'yicha) ----------
+const codeSearchBtn = document.getElementById('codeSearchBtn');
+codeSearchBtn.addEventListener('click', guarded(codeSearchBtn, async () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
+  const q = document.getElementById('codeSearchInput').value.trim();
+  const resultsEl = document.getElementById('codeSearchResults');
+  if(!q){ toast('qidiruv so\'zi kiritilmagan', 'err'); return; }
+  const { owner, name } = state.currentRepo;
+  resultsEl.innerHTML = `<div class="list-item"><span class="meta">qidirilmoqda...</span></div>`;
+  try{
+    const data = await gh(`/search/code?q=${encodeURIComponent(q)}+repo:${owner}/${name}`);
+    if(!data.items || data.items.length === 0){
+      resultsEl.innerHTML = `<div class="list-item"><span class="meta">hech narsa topilmadi</span></div>`;
+      return;
+    }
+    resultsEl.innerHTML = data.items.map(item => `
+      <div class="search-result" data-path="${escapeHtml(item.path)}" data-sha="${escapeHtml(item.sha)}">
+        <div class="path">${escapeHtml(item.path)}</div>
+        <div class="repo-name">${escapeHtml(item.repository.full_name)}</div>
+      </div>
+    `).join('');
+    resultsEl.querySelectorAll('.search-result').forEach(el => {
+      el.addEventListener('click', () => {
+        const path = el.dataset.path;
+        const parts = path.split('/');
+        parts.pop();
+        state.currentPath = parts.join('/');
+        document.querySelector('.tab[data-tab="browser"]').click();
+        loadFileList().then(() => openFile(path, el.dataset.sha));
+      });
+    });
+  }catch(err){
+    resultsEl.innerHTML = `<div class="list-item"><span class="meta err">✗ ${escapeHtml(friendlyError(err.message))}</span></div>`;
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
+document.getElementById('codeSearchInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') codeSearchBtn.click(); });
+
+// ---------- ISSUES ----------
+async function loadIssues(reset=false){
+  if(!state.currentRepo) return;
+  if(reset) state.issuesPage = 1;
+  const { owner, name } = state.currentRepo;
+  const listEl = document.getElementById('issuesList');
+  if(reset) listEl.innerHTML = '';
+  try{
+    const issues = await gh(`/repos/${owner}/${name}/issues?state=all&per_page=20&page=${state.issuesPage}`);
+    listEl.dataset.loaded = '1';
+    if(issues.length === 0 && reset){
+      listEl.innerHTML = `<div class="pi-item"><span class="meta">issue topilmadi</span></div>`;
+      return;
+    }
+    issues.filter(i => !i.pull_request).forEach(iss => {
+      const el = document.createElement('div');
+      el.className = 'pi-item';
+      el.innerHTML = `
+        <div class="title">#${iss.number} ${escapeHtml(iss.title)} <span class="pi-badge ${iss.state}">${iss.state}</span></div>
+        <div class="meta">${escapeHtml(iss.user.login)} • ${new Date(iss.created_at).toLocaleDateString()}</div>`;
+      listEl.appendChild(el);
+    });
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}
+document.getElementById('loadMoreIssues').addEventListener('click', () => { state.issuesPage += 1; loadIssues(false); });
+
+const createIssueBtn = document.getElementById('createIssueBtn');
+createIssueBtn.addEventListener('click', guarded(createIssueBtn, async () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
+  const { owner, name } = state.currentRepo;
+  const title = document.getElementById('newIssueTitle').value.trim();
+  const body = document.getElementById('newIssueBody').value;
+  if(!title){ toast('issue sarlavhasi kiritilmagan', 'err'); return; }
+  try{
+    const created = await gh(`/repos/${owner}/${name}/issues`, { method:'POST', body: JSON.stringify({ title, body }) });
+    log(`✓ issue yaratildi: #${created.number}`, 'ok');
+    toast(`Issue yaratildi: #${created.number}`, 'ok');
+    document.getElementById('newIssueTitle').value = '';
+    document.getElementById('newIssueBody').value = '';
+    await loadIssues(true);
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
+
+// ---------- PULL REQUESTS ----------
+async function loadPrs(reset=false){
+  if(!state.currentRepo) return;
+  if(reset) state.prsPage = 1;
+  const { owner, name } = state.currentRepo;
+  const listEl = document.getElementById('prsList');
+  if(reset) listEl.innerHTML = '';
+  try{
+    const prs = await gh(`/repos/${owner}/${name}/pulls?state=all&per_page=20&page=${state.prsPage}`);
+    listEl.dataset.loaded = '1';
+    if(prs.length === 0 && reset){
+      listEl.innerHTML = `<div class="pi-item"><span class="meta">pull request topilmadi</span></div>`;
+      return;
+    }
+    prs.forEach(pr => {
+      const el = document.createElement('div');
+      el.className = 'pi-item';
+      el.innerHTML = `
+        <div class="title">#${pr.number} ${escapeHtml(pr.title)} <span class="pi-badge ${pr.state}">${pr.state}</span></div>
+        <div class="meta">${escapeHtml(pr.user.login)} • ${escapeHtml(pr.head.ref)} → ${escapeHtml(pr.base.ref)}</div>`;
+      listEl.appendChild(el);
+    });
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}
+document.getElementById('loadMorePrs').addEventListener('click', () => { state.prsPage += 1; loadPrs(false); });
+
+const createPrBtn = document.getElementById('createPrBtn');
+createPrBtn.addEventListener('click', guarded(createPrBtn, async () => {
+  if(!state.currentRepo){ log('✗ repo tanlanmagan', 'err'); return; }
+  const { owner, name } = state.currentRepo;
+  const head = document.getElementById('prHead').value.trim();
+  const base = document.getElementById('prBase').value.trim();
+  const title = document.getElementById('prTitle').value.trim();
+  const body = document.getElementById('prBody').value;
+  if(!head || !base || !title){ toast('head, base va sarlavha kerak', 'err'); return; }
+  try{
+    const created = await gh(`/repos/${owner}/${name}/pulls`, { method:'POST', body: JSON.stringify({ title, head, base, body }) });
+    log(`✓ pull request yaratildi: #${created.number}`, 'ok');
+    toast(`PR yaratildi: #${created.number}`, 'ok');
+    document.getElementById('prTitle').value = '';
+    document.getElementById('prBody').value = '';
+    await loadPrs(true);
+  }catch(err){
+    log(`✗ xato: ${friendlyError(err.message)}`, 'err');
+    toast(friendlyError(err.message), 'err');
+  }
+}, '...'));
+
+// ---------- CTRL+K: repo tez almashtirish ----------
+document.addEventListener('keydown', (e) => {
+  if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){
+    if(document.getElementById('mainApp').style.display === 'none') return;
+    e.preventDefault();
+    const sel = document.getElementById('repoSelect');
+    sel.focus();
+    if(typeof sel.showPicker === 'function'){ try{ sel.showPicker(); }catch(err){} }
+  }
+});
 </script>
